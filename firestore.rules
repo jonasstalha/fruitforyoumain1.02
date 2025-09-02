@@ -1,0 +1,437 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Reception Entries (Suivi & Contrôle de Réception)
+    function isValidReceptionEntry() {
+      let data = request.resource.data;
+      return data.lotNumber is string
+        && data.receptionDateTime is string
+        && data.farm is string
+        && data.variety is string
+        && data.quantity is string;
+    }
+
+    match /reception-entries/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidReceptionEntry();
+      allow update: if isAuthenticated(); // Allow update for controle fields
+      allow delete: if isAuthenticated();
+    }
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isValidFarmData() {
+      return request.resource.data.name is string
+        && request.resource.data.location is string
+        && request.resource.data.code is string
+        && request.resource.data.active is bool;
+    }
+
+    function isValidAvocadoTrackingData() {
+      let data = request.resource.data;
+      return data.harvest is map
+        && data.harvest.harvestDate is string
+        && data.harvest.farmLocation is string
+        && data.harvest.farmerId is string
+        && data.harvest.lotNumber is string
+        && data.harvest.variety is string
+        && data.transport is map
+        && data.transport.lotNumber is string
+        && data.transport.transportCompany is string
+        && data.transport.driverName is string
+        && data.transport.vehicleId is string
+        && data.transport.departureDateTime is string
+        && data.transport.arrivalDateTime is string
+        && data.sorting is map
+        && data.sorting.lotNumber is string
+        && data.sorting.sortingDate is string
+        && data.sorting.qualityGrade is string
+        && data.sorting.rejectedCount is number
+        && data.packaging is map
+        && data.packaging.lotNumber is string
+        && data.packaging.packagingDate is string
+        && data.packaging.boxId is string
+        && data.packaging.workerIds is list
+        && data.packaging.netWeight is number
+        && data.packaging.avocadoCount is number
+        && data.packaging.boxType is string
+        && data.storage is map
+        && data.storage.boxId is string
+        && data.storage.entryDate is string
+        && data.storage.storageTemperature is number
+        && data.storage.storageRoomId is string
+        && data.storage.exitDate is string
+        && data.export is map
+        && data.export.boxId is string
+        && data.export.loadingDate is string
+        && data.export.containerId is string
+        && data.export.driverName is string
+        && data.export.vehicleId is string
+        && data.export.destination is string
+        && data.delivery is map
+        && data.delivery.boxId is string
+        && data.delivery.estimatedDeliveryDate is string
+        && data.delivery.actualDeliveryDate is string
+        && data.delivery.clientName is string
+        && data.delivery.clientLocation is string
+        && data.delivery.notes is string;
+    }
+
+    function isValidWarehouseData() {
+      return request.resource.data.name is string
+        && request.resource.data.location is string
+        && request.resource.data.capacity is number
+        && request.resource.data.code is string
+        && request.resource.data.active is bool;
+    }
+
+    function isValidLotData() {
+      let data = request.resource.data;
+      return data.lotNumber is string
+        && data.status is string && (data.status == 'active' || data.status == 'completed' || data.status == 'cancelled')
+        && data.createdAt is string
+        && data.updatedAt is string
+        && data.harvest is map
+        && data.harvest.date is string
+        && data.harvest.farmId is string
+        && data.harvest.farmName is string
+        && data.harvest.farmerId is string
+        && data.harvest.quantity is number
+        && data.harvest.quality is string
+        && data.harvest.defects is list
+        && data.harvest.notes is string
+        && data.transport is map
+        && data.transport.company is string
+        && data.transport.driverName is string
+        && data.transport.vehicleNumber is string
+        && data.transport.departureTime is string
+        && data.transport.arrivalTime is string
+        && data.transport.temperature is number
+        && data.transport.notes is string
+        && data.sorting is map
+        && data.sorting.date is string
+        && data.sorting.quantity is number
+        && data.sorting.quality is string
+        && data.sorting.defects is list
+        && data.sorting.notes is string
+        && data.packaging is map
+        && data.packaging.date is string
+        && data.packaging.quantity is number
+        && data.packaging.quality is string
+        && data.packaging.boxIds is list
+        && data.packaging.packagingType is string
+        && data.packaging.boxTypes is list
+        && data.packaging.netWeights is list
+        && data.packaging.avocadoCounts is list
+        && data.packaging.workerIds is list
+        && data.packaging.notes is string
+        && data.storage is map
+        && data.storage.warehouseId is string
+        && data.storage.location is string
+        && data.storage.temperature is number
+        && data.storage.humidity is number
+        && data.storage.entryDate is string
+        && data.storage.exitDate is string
+        && data.storage.notes is string
+        && data.export is map
+        && data.export.date is string
+        && data.export.destination is string
+        && data.export.quantity is number
+        && data.export.quality is string
+        && data.export.notes is string
+        && data.delivery is map
+        && data.delivery.date is string
+        && data.delivery.customer is string
+        && data.delivery.quantity is number
+        && data.delivery.quality is string
+        && data.delivery.notes is string;
+    }
+
+    // ✅ Avocado Orders collection - accessible to all authenticated users
+    match /avocado_orders/{orderId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Categories
+    match /categories/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+        && request.resource.data.name is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isAuthenticated()
+        && resource.data.createdBy == request.auth.uid;
+    }
+
+    // Documents
+    match /documents/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+        && request.resource.data.name is string
+        && request.resource.data.categoryId is string
+        && request.resource.data.url is string
+        && request.resource.data.uploadedAt is timestamp
+        && request.resource.data.uploadedBy == request.auth.uid;
+      allow update, delete: if isAuthenticated()
+        && resource.data.uploadedBy == request.auth.uid;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow update, delete: if isAuthenticated() && (isOwner(userId) || isAdmin());
+    }
+
+    // Farms
+    match /farms/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidFarmData();
+      allow update: if isAuthenticated() && isValidFarmData();
+      allow delete: if isAuthenticated();
+    }
+
+    // Lots
+    match /lots/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidLotData();
+      allow update: if isAuthenticated() && isValidLotData();
+      allow delete: if isAuthenticated();
+    }
+
+    // Public read access to lots
+    match /lots/{document=**} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Universal lots (for synchronization between quality control and production)
+    match /universal_lots/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // Warehouses
+    match /warehouses/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidWarehouseData();
+      allow update: if isAuthenticated() && isValidWarehouseData();
+      allow delete: if isAuthenticated();
+    }
+
+    // Avocado tracking
+    match /avocado-tracking/{documentId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // PDF reports
+    match /pdfReports/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.lotNumber is string;
+      allow update: if isAuthenticated() && request.resource.data.lotNumber is string;
+      allow delete: if isAuthenticated();
+    }
+
+    // Inventory
+    match /inventory/{itemId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+    }
+
+    // Entrepots
+    match /entrepots/{documentId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated() && request.auth.uid != null;
+    }
+
+    // Boxes
+    match /boxes/{boxId} {
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Files subcollection for multiple uploads per box
+      match /files/{fileId} {
+        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // Archifageboxes
+    match /Archifageboxes/{boxId} {
+      allow read, write: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      // Factures subcollection
+      match /factures/{factureId} {
+        allow read, write: if isAuthenticated() && resource.data.uploadedBy == request.auth.uid;
+      }
+    }
+
+    // Containers
+    match /containers/{containerId} {
+      allow read, write: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Factures collection (for uploaded invoices)
+    match /factures/{factureId} {
+      allow read, write: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Logistics archives
+    match /logistics-archives/{docId} {
+      // Allow create if the user is authenticated and is creating their own document
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      // Allow read, update, delete if the user is authenticated and owns the document
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Archive boxes
+    match /archive-boxes/{boxId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      // Files subcollection
+      match /files/{fileId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && get(/databases/$(database)/documents/archive-boxes/$(boxId)).data.userId == request.auth.uid;
+      }
+    }
+
+    // Public access for production_suivi (for SuiviProduction)
+    match /production_suivi/{docId} {
+      allow read, write: if true;
+    }
+
+    // Validation function for quality control lot data
+    function isValidQualityControlLot() {
+      let data = request.resource.data;
+      return data.lotNumber is string
+        && data.formData is map
+        && data.formData.date is string
+        && data.formData.product is string
+        && data.formData.variety is string
+        && data.formData.campaign is string
+        && data.formData.palettes is list
+        && data.status is string
+        && (data.status in ['draft', 'completed', 'submitted', 'chief_approved', 'chief_rejected', 'error'])
+        && data.phase is string
+        && (data.phase in ['controller', 'chief'])
+        && data.createdAt != null
+        && data.updatedAt != null;
+    }
+
+    // Quality Control Lots collection with validation and filtering
+    match /quality_control_lots/{lotId} {
+      // Allow reading all lots for authenticated users (filtering happens in client)
+      allow read: if isAuthenticated();
+      
+      // Allow creating new lots (they start as draft)
+      allow create: if isAuthenticated() && isValidQualityControlLot();
+      
+      // Allow updating lots (including marking as completed)
+      allow update: if isAuthenticated() && isValidQualityControlLot();
+      
+      // Allow deleting any lot if authenticated
+      allow delete: if isAuthenticated();
+    }
+
+    // Quality Control Reports collection  
+    match /quality_reports/{reportId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Quality Rapports collection
+    match /qualityRapports/{rapportId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Quality Control Images collection
+    match /quality_control_images/{imageId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Shared lots for production/quality sync
+    match /shared_lots/{documentId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Personnel Management collection
+    match /personnel/{documentId} {
+      // Allow full access for development/testing
+      allow read, write: if true;
+    }
+
+    // Work Schedules collection
+    match /work_schedules/{documentId} {
+      // Allow full access for development/testing
+      allow read, write: if true;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isDevelopmentServer() {
+      return request.origin.matches('http://localhost:[0-9]+');
+    }
+
+    // User files
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Invoices uploaded by user (archive uploads)
+    match /invoices/{userId}/{boxId}/{fileName} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Factures: allow any authenticated user to read and write
+    match /factures/{allBoxIds}/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Quality Control images
+    match /quality_control/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /documents/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isOwner(userId) && isDevelopmentServer();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
