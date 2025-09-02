@@ -48,6 +48,7 @@ import historiquedemaintenance from "@/pages/mantenance/historiquedemaintenance"
 import { auth } from '@/lib/firebase';
 import GererCommandesClient from "@/pages/orders/gerer-commandes-client";
 import OrderTrackingView from "@/pages/orders/order-tracking";
+import CommandeClient from "@/pages/orders/commande-client";
 import AutomatisationDeMaintenance from "@/pages/maintenance/automatisation-maintenance";
 import PiecesDeRechangeMaintenance from "@/pages/maintenance/pieces-rechange-maintenance";
 import CommunicationDashboard from "@/pages/communication/communication-dash";
@@ -90,6 +91,7 @@ function AuthenticatedRoutes() {
         <Route path="/communication-dashboard" component={CommunicationDashboard} />
         <Route path="/gererlescommandesclinet" component={GererCommandesClient} />
         <Route path="/commandeclinet" component={OrderTrackingView} />
+        <Route path="/commande-client" component={CommandeClient} />
         <Route path="/lots" component={LotsPage} />
         <Route path="/lots/:id/barcode" component={LotBarcodePage} />
         <Route path="/farms" component={FarmsPage} />

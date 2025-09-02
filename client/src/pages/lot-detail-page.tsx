@@ -25,50 +25,46 @@ import {
   Share2
 } from "lucide-react";
 import { Link } from "wouter";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { AvocadoTracking } from "@shared/schema";
 
-interface AvocadoTrackingData {
-  harvest: {
-    lotNumber: string;
-    harvestDate: string;
-    farmLocation: string;
-    variety: string;
-  };
-  transport: {
-    arrivalDateTime: string;
-    vehicleId?: string;
-    driverName?: string;
-  };
+// Extended interface for the actual data structure used by Firebase
+interface ExtendedAvocadoTracking extends Omit<AvocadoTracking, 'sorting' | 'packaging'> {
   sorting: {
-    sortingDate: string;
-    qualityGrade?: string;
-    rejectedQuantity?: number;
+    qualityGrade: string;
+    rejectedCount: number;
+    notes?: string;
+    sortingDate?: string;
+    lotNumber?: string;
   };
   packaging: {
-    packagingDate: string;
-    netWeight?: number;
-    packagingType?: string;
+    boxId: string;
+    netWeight: number;
+    avocadoCount: number;
+    boxType: string;
+    packagingDate?: string;
+    lotNumber?: string;
+    workerIds?: string[];
   };
-  storage: {
+  storage?: {
+    boxId: string;
     entryDate: string;
-    storageZone?: string;
-    temperature?: number;
+    storageTemperature: number;
+    storageRoomId: string;
+    exitDate?: string;
   };
-  export: {
+  export?: {
+    boxId: string;
     loadingDate: string;
-    destination?: string;
-    containerNumber?: string;
-  };
-  delivery: {
-    actualDeliveryDate: string;
-    customerName?: string;
+    containerId: string;
+    driverName: string;
+    vehicleId: string;
+    destination: string;
   };
 }
 
 export default function LotDetailPage() {
   const { lotNumber: rawLotNumber } = useParams<{ lotNumber: string }>();
-  const [lotData, setLotData] = useState<AvocadoTrackingData | null>(null);
+  const [lotData, setLotData] = useState<ExtendedAvocadoTracking | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentLotNumber, setCurrentLotNumber] = useState<string | null>(null);
@@ -108,77 +104,54 @@ export default function LotDetailPage() {
         return;
       }
 
-      const lotNumber = cleanLotNumber(rawLotNumber);
+      // Decode the URL parameter in case it contains special characters
+      const decodedLotNumber = decodeURIComponent(rawLotNumber);
+      const lotNumber = cleanLotNumber(decodedLotNumber);
+      console.log('Raw lot number:', rawLotNumber);
+      console.log('Decoded lot number:', decodedLotNumber);
       console.log('Cleaned lot number:', lotNumber);
       setCurrentLotNumber(lotNumber);
       setIsLoading(true);
       setErrorMessage(null);
 
       try {
-        // Try different variations of the lot number
-        const variations = [
-          lotNumber,
-          lotNumber.toUpperCase(),
-          lotNumber.toLowerCase(),
-          `LOT-${lotNumber}`,
-          `LOT${lotNumber}`,
-          `lot-${lotNumber}`,
-          `lot${lotNumber}`,
-          lotNumber.replace(/-/g, ''),
-          lotNumber.replace(/-/g, '').toUpperCase(),
-          lotNumber.replace(/-/g, ' '),
-          lotNumber.replace(/-/g, ' ').toUpperCase(),
-          lotNumber.replace(/-/g, ' ').toLowerCase(),
-          `LOT ${lotNumber}`,
-          `LOT ${lotNumber.replace(/-/g, ' ')}`,
-          lotNumber.replace(/(\d+)-(\d+)-(\d+)/, '$1$2$3'),
-          lotNumber.replace(/(\d+)-(\d+)-(\d+)/, '$1-$2-$3')
-        ];
-        console.log('Trying lot number variations:', variations);
-
-        // First try the lots collection with multiple field checks
-        const lotsQueries = [
-          query(collection(db, 'lots'), where('lotNumber', 'in', variations)),
-          query(collection(db, 'lots'), where('harvest.lotNumber', 'in', variations)),
-          query(collection(db, 'lots'), where('id', 'in', variations))
-        ];
-
-        for (const q of lotsQueries) {
-          const snapshot = await getDocs(q);
-          console.log('Query snapshot size for lots collection:', snapshot.size);
+        // Use the same method as the lots page - fetch all data and filter
+        const { getAvocadoTrackingData } = await import('@/lib/queryClient');
+        const lots = await getAvocadoTrackingData()();
+        
+        console.log('Fetched lots from queryClient:', lots.length);
+        
+        if (lots.length > 0) {
+          console.log('Sample lot structure:', lots[0]);
+          console.log('Looking for lot number:', lotNumber);
           
-          if (!snapshot.empty) {
-            const lotDoc = snapshot.docs[0];
-            const lotData = lotDoc.data() as AvocadoTrackingData;
-            console.log('Found lot data in lots collection:', lotData);
-            setLotData(lotData);
+          // Find the lot by matching harvest.lotNumber
+          const foundLot = lots.find(lot => {
+            const lotNum = lot.harvest?.lotNumber;
+            console.log('Comparing:', lotNum, 'with', lotNumber);
+            console.log('Also comparing with decoded:', decodedLotNumber);
+            return lotNum === lotNumber || 
+                   lotNum === decodedLotNumber ||
+                   lotNum === lotNumber.toString() || 
+                   lotNum?.toString() === lotNumber ||
+                   lotNum?.toLowerCase() === lotNumber.toLowerCase() ||
+                   lotNum?.toUpperCase() === lotNumber.toUpperCase() ||
+                   lotNum?.toLowerCase() === decodedLotNumber.toLowerCase() ||
+                   lotNum?.toUpperCase() === decodedLotNumber.toUpperCase();
+          });
+          
+          if (foundLot) {
+            console.log('Found lot data:', foundLot);
+            setLotData(foundLot as ExtendedAvocadoTracking);
             setIsLoading(false);
             return;
+          } else {
+            console.log('No matching lot found in', lots.length, 'lots');
+            console.log('Available lot numbers:', lots.map(l => l.harvest?.lotNumber));
           }
         }
 
-        // If not found in lots, try avocado-tracking collection with multiple field checks
-        const trackingQueries = [
-          query(collection(db, 'avocado-tracking'), where('lotNumber', 'in', variations)),
-          query(collection(db, 'avocado-tracking'), where('harvest.lotNumber', 'in', variations)),
-          query(collection(db, 'avocado-tracking'), where('id', 'in', variations))
-        ];
-
-        for (const q of trackingQueries) {
-          const snapshot = await getDocs(q);
-          console.log('Query snapshot size for avocado-tracking collection:', snapshot.size);
-          
-          if (!snapshot.empty) {
-            const lotDoc = snapshot.docs[0];
-            const lotData = lotDoc.data() as AvocadoTrackingData;
-            console.log('Found lot data in avocado-tracking collection:', lotData);
-            setLotData(lotData);
-            setIsLoading(false);
-            return;
-          }
-        }
-
-        console.log('No lot found with any of the variations');
+        console.log('No lot found with lot number:', lotNumber);
         setErrorMessage('Le lot n\'existe pas ou n\'a pas pu être trouvé.');
         setIsLoading(false);
       } catch (error) {
@@ -204,37 +177,37 @@ export default function LotDetailPage() {
     };
   }, [rawLotNumber]);
 
-  const getProgressPercentage = (lot: AvocadoTrackingData | null): number => {
+  const getProgressPercentage = (lot: ExtendedAvocadoTracking | null): number => {
     if (!lot) return 0;
     const steps = [
       lot.harvest.harvestDate,
       lot.transport.arrivalDateTime,
-      lot.sorting.sortingDate,
-      lot.packaging.packagingDate,
-      lot.storage.entryDate,
-      lot.export.loadingDate,
-      lot.delivery.actualDeliveryDate
+      lot.sorting?.sortingDate,
+      lot.packaging?.packagingDate,
+      lot?.storage?.entryDate,
+      lot?.export?.loadingDate,
+      lot.delivery?.actualDeliveryDate
     ];
     const completedSteps = steps.filter(step => step).length;
     return (completedSteps / steps.length) * 100;
   };
 
-  const getStatusBadge = (lot: AvocadoTrackingData | null) => {
+  const getStatusBadge = (lot: ExtendedAvocadoTracking | null) => {
     if (!lot) return null;
     
-    if (lot.delivery.actualDeliveryDate) {
+    if (lot.delivery?.actualDeliveryDate) {
       return <Badge className="bg-green-100 text-green-800">Livré</Badge>;
     }
-    if (lot.export.loadingDate) {
+    if (lot?.export?.loadingDate) {
       return <Badge className="bg-blue-100 text-blue-800">En Export</Badge>;
     }
-    if (lot.storage.entryDate) {
+    if (lot?.storage?.entryDate) {
       return <Badge className="bg-purple-100 text-purple-800">En Stockage</Badge>;
     }
-    if (lot.packaging.packagingDate) {
+    if (lot?.packaging?.packagingDate) {
       return <Badge className="bg-yellow-100 text-yellow-800">Emballé</Badge>;
     }
-    if (lot.sorting.sortingDate) {
+    if (lot?.sorting?.sortingDate) {
       return <Badge className="bg-orange-100 text-orange-800">Trié</Badge>;
     }
     if (lot.transport.arrivalDateTime) {
@@ -315,38 +288,38 @@ export default function LotDetailPage() {
     },
     {
       title: "Tri",
-      date: lotData.sorting.sortingDate,
+      date: lotData.sorting?.sortingDate,
       icon: <Package className="h-5 w-5" />,
-      completed: !!lotData.sorting.sortingDate,
-      details: `Grade: ${lotData.sorting.qualityGrade || 'N/A'} | Rejetés: ${lotData.sorting.rejectedQuantity || 0} kg`
+      completed: !!lotData.sorting?.sortingDate,
+      details: `Grade: ${lotData.sorting.qualityGrade || 'N/A'} | Rejetés: ${lotData.sorting.rejectedCount || 0} kg`
     },
     {
       title: "Emballage",
-      date: lotData.packaging.packagingDate,
+      date: lotData.packaging?.packagingDate,
       icon: <Box className="h-5 w-5" />,
-      completed: !!lotData.packaging.packagingDate,
-      details: `Poids net: ${lotData.packaging.netWeight || 0} kg | Type: ${lotData.packaging.packagingType || 'N/A'}`
+      completed: !!lotData.packaging?.packagingDate,
+      details: `Poids net: ${lotData.packaging.netWeight || 0} kg | Type: ${lotData.packaging.boxType || 'N/A'}`
     },
     {
       title: "Stockage",
-      date: lotData.storage.entryDate,
+      date: lotData.storage?.entryDate,
       icon: <Building className="h-5 w-5" />,
-      completed: !!lotData.storage.entryDate,
-      details: `Zone: ${lotData.storage.storageZone || 'N/A'} | Temp: ${lotData.storage.temperature || 'N/A'}°C`
+      completed: !!lotData.storage?.entryDate,
+      details: `Zone: ${lotData.storage?.storageRoomId || 'N/A'} | Temp: ${lotData.storage?.storageTemperature || 'N/A'}°C`
     },
     {
       title: "Export",
-      date: lotData.export.loadingDate,
+      date: lotData.export?.loadingDate,
       icon: <Ship className="h-5 w-5" />,
-      completed: !!lotData.export.loadingDate,
-      details: `Destination: ${lotData.export.destination || 'N/A'} | Container: ${lotData.export.containerNumber || 'N/A'}`
+      completed: !!lotData.export?.loadingDate,
+      details: `Destination: ${lotData.export?.destination || 'N/A'} | Container: ${lotData.export?.containerId || 'N/A'}`
     },
     {
       title: "Livraison",
       date: lotData.delivery.actualDeliveryDate,
       icon: <CheckCircle2 className="h-5 w-5" />,
       completed: !!lotData.delivery.actualDeliveryDate,
-      details: `Client: ${lotData.delivery.customerName || 'N/A'}`
+      details: `Client: ${lotData.delivery.clientName || 'N/A'}`
     }
   ];
 
@@ -426,7 +399,7 @@ export default function LotDetailPage() {
               <Scale className="h-5 w-5 text-neutral-500" />
               <div>
                 <p className="text-sm font-medium">Poids Net</p>
-                <p className="text-lg">{lotData.packaging.netWeight || 0} kg</p>
+                <p className="text-lg">{lotData.packaging?.netWeight || 0} kg</p>
               </div>
             </div>
           </CardContent>
@@ -438,7 +411,7 @@ export default function LotDetailPage() {
               <Package className="h-5 w-5 text-neutral-500" />
               <div>
                 <p className="text-sm font-medium">Grade</p>
-                <p className="text-lg">{lotData.sorting.qualityGrade || 'N/A'}</p>
+                <p className="text-lg">{lotData.sorting?.qualityGrade || 'N/A'}</p>
               </div>
             </div>
           </CardContent>

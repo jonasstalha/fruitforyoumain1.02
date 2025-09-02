@@ -192,7 +192,7 @@ export default function LotsPage() {
               </CardContent>
       <CardFooter className="flex justify-end space-x-2">
   <Button variant="outline" size="sm" asChild>
-    <Link href={`/lots/${lot.harvest.lotNumber}`}>
+    <Link href={`/lots/${encodeURIComponent(lot.harvest.lotNumber)}`}>
       Détails
     </Link>
   </Button>

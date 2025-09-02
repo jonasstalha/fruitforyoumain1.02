@@ -194,8 +194,13 @@ service cloud.firestore {
     // Users
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (isOwner(userId) || isAdmin());
+    }
+
+    // Allow reading all users for messaging functionality (simplified)
+    match /users/{document=**} {
+      allow read: if isAuthenticated();
     }
 
     // Farms
@@ -383,6 +388,16 @@ service cloud.firestore {
     match /work_schedules/{documentId} {
       // Allow full access for development/testing
       allow read, write: if true;
+    }
+
+    // Messages collection for communication dashboard - simplified for development
+    match /messages/{messageId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Communication Notifications collection - simplified for development
+    match /communication-notifications/{notificationId} {
+      allow read, write: if isAuthenticated();
     }
 
     // Default deny

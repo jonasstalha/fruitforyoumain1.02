@@ -106,7 +106,6 @@ export default function LotTable({ lots, isLoading, farms }: LotTableProps) {
               <TableHead>Ferme</TableHead>
               <TableHead>Récolté</TableHead>
               <TableHead>Quantité</TableHead>
-              <TableHead>Statut</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -119,13 +118,12 @@ export default function LotTable({ lots, isLoading, farms }: LotTableProps) {
                   <TableCell><Skeleton className="h-6 w-28" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-28" /></TableCell>
                 </TableRow>
               ))
             ) : currentLots.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-6 text-neutral-500">
+                <TableCell colSpan={5} className="text-center py-6 text-neutral-500">
                   Aucun lot trouvé
                 </TableCell>
               </TableRow>
@@ -136,11 +134,6 @@ export default function LotTable({ lots, isLoading, farms }: LotTableProps) {
                   <TableCell>{getFarmName(lot.farmId)}</TableCell>
                   <TableCell>{formatDate(lot.harvestDate)}</TableCell>
                   <TableCell>{lot.initialQuantity} kg</TableCell>
-                  <TableCell>
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(lot.currentStatus)}`}>
-                      {getStatusText(lot.currentStatus)}
-                    </span>
-                  </TableCell>
                   <TableCell className="space-x-2">
                     <Button
                       variant="ghost"

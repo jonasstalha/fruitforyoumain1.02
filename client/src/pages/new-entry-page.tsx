@@ -9,12 +9,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2, Save, CheckCircle, Clock, ArrowLeft, ArrowRight, Package, Truck, Factory, Warehouse, Ship, MapPin } from "lucide-react";
 import { addAvocadoTracking, getFarms } from "@/lib/firebaseService";
-import { useNavigate } from "react-router-dom";
+import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function NewEntryPage() {
   const { t } = useLanguage();
+  const [location, setLocation] = useLocation();
   const [farms, setFarms] = useState([]);
   const [error, setError] = useState('');
 
@@ -178,7 +179,7 @@ export default function NewEntryPage() {
       await addAvocadoTracking(submissionData);
 
       // Navigate to lots page after successful submission
-      navigate('/lots');
+      setLocation('/lots');
     } catch (error) {
       console.error('Error submitting form:', error);
       // Show error alert
@@ -607,6 +608,20 @@ export default function NewEntryPage() {
                     value={formData.packagingDate || ""}
                     onChange={(e) => setFormData({ ...formData, packagingDate: e.target.value })}
                     className="border-2 focus:border-amber-500 transition-colors"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="boxId" className="flex items-center gap-2 font-semibold">
+                    📦 ID de la boîte <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="boxId"
+                    value={formData.boxId || ""}
+                    onChange={(e) => setFormData({ ...formData, boxId: e.target.value })}
+                    className="border-2 focus:border-amber-500 transition-colors"
+                    placeholder="Ex: BOX-2024-001"
                     required
                   />
                 </div>

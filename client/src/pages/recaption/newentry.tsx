@@ -66,14 +66,7 @@ const ControleReception: React.FC = () => {
   return (
     <div className="p-8 max-w-xl mx-auto bg-white rounded-xl shadow">
       <h1 className="text-2xl font-bold mb-6">Contrôle de Réception - Lot {controleData.lotNumber}</h1>
-      <div className="mb-4">
-        <label className="block font-semibold mb-1">Statut du Contrôle</label>
-        <Input
-          value={status}
-          onChange={e => setStatus(e.target.value)}
-          placeholder="Statut (Conforme, Non Conforme, ... )"
-        />
-      </div>
+  {/* Statut du Contrôle field removed */}
       <div className="mb-4">
         <label className="block font-semibold mb-1">Notes de Contrôle</label>
         <Textarea

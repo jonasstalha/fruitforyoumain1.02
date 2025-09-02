@@ -1,5 +1,24 @@
-import React, { useState } from 'react';
-import { MessageCircle, Bell, Search, Filter } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { MessageCircle, Bell, Search, Filter, Send, Users, Loader2, Database } from 'lucide-react';
+import { useAuth } from '@/components/auth-provider';
+import { 
+  getAllMessages, 
+  getMessagesForUser, 
+  sendMessage, 
+  markMessageAsRead, 
+  deleteMessageFromDB,
+  getCommunicationNotifications,
+  addCommunicationNotification,
+  markCommunicationNotificationAsRead,
+  deleteCommunicationNotification,
+  getUsers,
+  type Message as FirebaseMessage,
+  type CommunicationNotification
+} from '@/lib/firebaseService';
+import { initializeCommunication } from '@/lib/initCommunication';
+import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { toast } from 'sonner';
 
 interface Message {
   id: string;
@@ -8,6 +27,8 @@ interface Message {
   timestamp: Date;
   read: boolean;
   priority: 'high' | 'medium' | 'low';
+  recipientEmail?: string;
+  recipientName?: string;
 }
 
 interface Notification {
@@ -17,42 +38,132 @@ interface Notification {
   read: boolean;
 }
 
+interface User {
+  email: string;
+  name: string;
+}
+
 export default function CommunicationDashboard() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('messages');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPriority, setFilterPriority] = useState('all');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      sender: 'Logistics Team',
-      content: 'New shipment arriving today at 14:00',
-      timestamp: new Date(),
-      read: false,
-      priority: 'high',
-    },
-    {
-      id: '2',
-      sender: 'Quality Control',
-      content: 'Daily quality report is ready for review',
-      timestamp: new Date(),
-      read: true,
-      priority: 'medium',
-    }
-  ]);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: 'n1',
-      content: 'System maintenance scheduled for tomorrow at 10:00 AM.',
-      timestamp: new Date(),
-      read: false,
-    },
-    {
-      id: 'n2',
-      content: 'Reminder: Submit your weekly report.',
-      timestamp: new Date(),
-      read: true,
-    }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedRecipient, setSelectedRecipient] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  // Convert Firebase message to local message format
+  const convertFirebaseMessage = (fbMessage: FirebaseMessage): Message => ({
+    id: fbMessage.id,
+    sender: fbMessage.senderName,
+    content: fbMessage.content,
+    timestamp: new Date(fbMessage.timestamp),
+    read: fbMessage.read,
+    priority: fbMessage.priority,
+    recipientEmail: fbMessage.recipientEmail,
+    recipientName: fbMessage.recipientName
+  });
+
+  // Convert Firebase notification to local notification format
+  const convertFirebaseNotification = (fbNotification: CommunicationNotification): Notification => ({
+    id: fbNotification.id,
+    content: fbNotification.content,
+    timestamp: new Date(fbNotification.timestamp),
+    read: fbNotification.read
+  });
+
+  // Set up real-time listeners
+  useEffect(() => {
+    if (!user?.email) return;
+
+    setLoading(true);
+
+    // Listen for messages
+    const messagesRef = collection(db, 'messages');
+    const messagesQuery = query(messagesRef, orderBy('createdAt', 'desc'));
+    
+    const unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
+      const messagesList: Message[] = [];
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        // Only show messages that are either broadcasts or addressed to this user
+        if (!data.recipientEmail || data.recipientEmail === user.email) {
+          messagesList.push({
+            id: doc.id,
+            sender: data.senderName || data.senderEmail,
+            content: data.content,
+            timestamp: data.timestamp?.toDate() || new Date(),
+            read: data.read || false,
+            priority: data.priority || 'medium',
+            recipientEmail: data.recipientEmail,
+            recipientName: data.recipientName
+          });
+        }
+      });
+      setMessages(messagesList);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error listening to messages:', error);
+      setMessages([]); // Set empty array as fallback
+      setLoading(false);
+    });
+
+    // Listen for notifications
+    const notificationsRef = collection(db, 'communication-notifications');
+    const notificationsQuery = query(notificationsRef, orderBy('createdAt', 'desc'));
+    
+    const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
+      const notificationsList: Notification[] = [];
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        notificationsList.push({
+          id: doc.id,
+          content: data.content,
+          timestamp: data.timestamp?.toDate() || new Date(),
+          read: data.read || false
+        });
+      });
+      setNotifications(notificationsList);
+    }, (error) => {
+      console.error('Error listening to notifications:', error);
+      setNotifications([]); // Set empty array as fallback
+    });
+
+    // Load users for message addressing
+    const loadUsers = async () => {
+      try {
+        const usersList = await getUsers();
+        setUsers(usersList);
+      } catch (error) {
+        console.error('Error loading users:', error);
+        // Create a fallback user list if users collection is not accessible
+        setUsers([
+          {
+            name: 'Administrateur',
+            email: 'admin@fruitsforyou.com'
+          },
+          {
+            name: 'Responsable Qualité',
+            email: 'qualite@fruitsforyou.com'
+          },
+          {
+            name: 'Responsable Production',
+            email: 'production@fruitsforyou.com'
+          }
+        ]);
+      }
+    };
+    
+    loadUsers();
+
+    return () => {
+      unsubscribeMessages();
+      unsubscribeNotifications();
+    };
+  }, [user?.email]);
 
   const getTabClassName = (tabName: string) => {
     return activeTab === tabName
@@ -83,219 +194,376 @@ export default function CommunicationDashboard() {
   });
 
   // Mark notification as read
-  const markNotificationRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+  const markNotificationRead = async (id: string) => {
+    try {
+      await markCommunicationNotificationAsRead(id);
+      toast.success('Notification marked as read');
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      toast.error('Failed to mark notification as read');
+    }
   };
 
   // Mark message as read
-  const markMessageRead = (id: string) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, read: true } : m))
-    );
+  const markMessageRead = async (id: string) => {
+    try {
+      await markMessageAsRead(id);
+      toast.success('Message marked as read');
+    } catch (error) {
+      console.error('Error marking message as read:', error);
+      toast.error('Failed to mark message as read');
+    }
   };
 
-  // Add message
+  // Send message
+  const handleSendMessage = async (content: string, priority: 'high' | 'medium' | 'low', recipientEmail?: string) => {
+    if (!user?.email || !content.trim()) return;
+    
+    setSending(true);
+    try {
+      const recipientUser = users.find(u => u.email === recipientEmail);
+      await sendMessage({
+        senderEmail: user.email,
+        senderName: user.displayName || user.email,
+        recipientEmail: recipientEmail || undefined,
+        recipientName: recipientUser?.name || undefined,
+        content: content.trim(),
+        priority
+      });
+      
+      toast.success(recipientEmail ? `Message sent to ${recipientUser?.name || recipientEmail}` : 'Broadcast message sent');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error('Failed to send message');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Add message (using handleSendMessage)
   const addMessage = (sender: string, content: string, priority: 'high' | 'medium' | 'low') => {
-    setMessages(prev => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        sender,
-        content,
-        timestamp: new Date(),
-        read: false,
-        priority,
-      },
-    ]);
+    handleSendMessage(content, priority, selectedRecipient || undefined);
   };
 
   // Delete message
-  const deleteMessage = (id: string) => {
-    setMessages(prev => prev.filter(m => m.id !== id));
+  const deleteMessage = async (id: string) => {
+    try {
+      await deleteMessageFromDB(id);
+      toast.success('Message deleted');
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      toast.error('Failed to delete message');
+    }
+  };
+
+  // Initialize communication collections
+  const handleInitializeCommunication = async () => {
+    try {
+      await initializeCommunication();
+      toast.success('Communication système initialisé avec succès!');
+      // Refresh the page to reload data
+      window.location.reload();
+    } catch (error) {
+      console.error('Error initializing communication:', error);
+      toast.error('Erreur lors de l\'initialisation');
+    }
   };
 
   // Add notification
-  const addNotification = (content: string) => {
-    setNotifications(prev => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        content,
-        timestamp: new Date(),
-        read: false,
-      },
-    ]);
+  const addNotification = async (content: string) => {
+    try {
+      await addCommunicationNotification(content);
+      toast.success('Notification added');
+    } catch (error) {
+      console.error('Error adding notification:', error);
+      toast.error('Failed to add notification');
+    }
   };
 
   // Delete notification
-  const deleteNotification = (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
+  const deleteNotification = async (id: string) => {
+    try {
+      await deleteCommunicationNotification(id);
+      toast.success('Notification deleted');
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+      toast.error('Failed to delete notification');
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Communication Dashboard</h1>
-          <p className="text-gray-600">Manage all your team communications in one place</p>
-        </div>
-
-        {/* Search and Filter Bar */}
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search messages..."
-              className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Communication Dashboard</h1>
+            <p className="text-gray-600">Manage all your team communications in one place</p>
+            {user && (
+              <p className="text-sm text-gray-500 mt-1">Logged in as: {user.displayName || user.email}</p>
+            )}
           </div>
-          <div className="relative w-full md:w-48">
-            <Filter className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-            <select
-              className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
-              value={filterPriority}
-              onChange={(e) => setFilterPriority(e.target.value)}
+          <div className="flex gap-2">
+            <button
+              onClick={handleInitializeCommunication}
+              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
-              <option value="all">All Priorities</option>
-              <option value="high">High Priority</option>
-              <option value="medium">Medium Priority</option>
-              <option value="low">Low Priority</option>
-            </select>
+              <Database className="h-4 w-4 mr-2" />
+              Initialize System
+            </button>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-gray-200 mb-6">
-          <button
-            className={getTabClassName('messages')}
-            onClick={() => setActiveTab('messages')}
-          >
-            <div className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" />
-              <span>Messages</span>
-            </div>
-          </button>
-          <button
-            className={getTabClassName('notifications')}
-            onClick={() => setActiveTab('notifications')}
-          >
-            <div className="flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              <span>Notifications</span>
-            </div>
-          </button>
-        </div>
+        {loading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+            <span className="ml-2 text-gray-600">Loading messages...</span>
+          </div>
+        )}
 
-        {/* Main Content Area */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          {activeTab === 'messages' && (
-            <>
-              <form
-                className="flex flex-col md:flex-row gap-2 mb-4"
-                onSubmit={e => {
-                  e.preventDefault();
-                  const form = e.target as typeof e.target & { sender: { value: string }, content: { value: string }, priority: { value: string } };
-                  if (form.content.value.trim()) {
-                    addMessage(form.sender.value, form.content.value, form.priority.value as any);
-                    form.content.value = '';
-                  }
-                }}
-              >
-                <input name="sender" placeholder="Sender" className="border rounded px-2 py-1" defaultValue="You" required />
-                <input name="content" placeholder="Type a message..." className="border rounded px-2 py-1 flex-1" required />
-                <select name="priority" className="border rounded px-2 py-1">
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
+        {!loading && (
+          <>
+            {/* Search and Filter Bar */}
+            <div className="flex flex-col md:flex-row gap-4 mb-6">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search messages..."
+                  className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <div className="relative w-full md:w-48">
+                <Filter className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                <select
+                  className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
+                  value={filterPriority}
+                  onChange={(e) => setFilterPriority(e.target.value)}
+                >
+                  <option value="all">All Priorities</option>
+                  <option value="high">High Priority</option>
+                  <option value="medium">Medium Priority</option>
+                  <option value="low">Low Priority</option>
                 </select>
-                <button type="submit" className="bg-blue-500 text-white px-4 py-1 rounded">Send</button>
-              </form>
-              <div className="space-y-4">
-                {filteredMessages.length === 0 && (
-                  <div className="text-center text-gray-400">No messages found.</div>
-                )}
-                {filteredMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={getMessageClassName(message)}
-                    onClick={() => markMessageRead(message.id)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-semibold text-gray-900">{message.sender}</h3>
-                      <span className="text-sm text-gray-500">
-                        {message.timestamp.toLocaleTimeString()}
-                        {!message.read && (
-                          <span className="ml-2 text-xs text-blue-500">●</span>
-                        )}
-                      </span>
-                      <button
-                        className="ml-2 text-xs text-red-500 hover:underline"
-                        onClick={e => { e.stopPropagation(); deleteMessage(message.id); }}
-                        title="Delete"
-                      >Delete</button>
-                    </div>
-                    <p className="text-gray-600">{message.content}</p>
-                  </div>
-                ))}
               </div>
-            </>
-          )}
+            </div>
 
-          {activeTab === 'notifications' && (
-            <>
-              <form
-                className="flex flex-col md:flex-row gap-2 mb-4"
-                onSubmit={e => {
-                  e.preventDefault();
-                  const form = e.target as typeof e.target & { content: { value: string } };
-                  if (form.content.value.trim()) {
-                    addNotification(form.content.value);
-                    form.content.value = '';
-                  }
-                }}
+            {/* Navigation Tabs */}
+            <div className="flex border-b border-gray-200 mb-6">
+              <button
+                className={getTabClassName('messages')}
+                onClick={() => setActiveTab('messages')}
               >
-                <input name="content" placeholder="Add notification..." className="border rounded px-2 py-1 flex-1" required />
-                <button type="submit" className="bg-yellow-500 text-white px-4 py-1 rounded">Add</button>
-              </form>
-              <div className="space-y-4">
-                {notifications.length === 0 && (
-                  <div className="text-center text-gray-400">No notifications.</div>
-                )}
-                {notifications.map((notification) => (
-                  <div
-                    key={notification.id}
-                    className={`p-4 rounded-lg border ${notification.read ? 'bg-white' : 'bg-yellow-50 border-yellow-200'}`}
-                    onClick={() => markNotificationRead(notification.id)}
-                    style={{ cursor: 'pointer' }}
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="h-5 w-5" />
+                  <span>Messages</span>
+                  {messages.filter(m => !m.read).length > 0 && (
+                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                      {messages.filter(m => !m.read).length}
+                    </span>
+                  )}
+                </div>
+              </button>
+              <button
+                className={getTabClassName('notifications')}
+                onClick={() => setActiveTab('notifications')}
+              >
+                <div className="flex items-center gap-2">
+                  <Bell className="h-5 w-5" />
+                  <span>Notifications</span>
+                  {notifications.filter(n => !n.read).length > 0 && (
+                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                      {notifications.filter(n => !n.read).length}
+                    </span>
+                  )}
+                </div>
+              </button>
+            </div>
+
+            {/* Main Content Area */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              {activeTab === 'messages' && (
+                <>
+                  <form
+                    className="mb-6 p-4 bg-gray-50 rounded-lg"
+                    onSubmit={e => {
+                      e.preventDefault();
+                      const form = e.target as typeof e.target & { 
+                        content: { value: string }, 
+                        priority: { value: string } 
+                      };
+                      if (form.content.value.trim()) {
+                        addMessage('You', form.content.value, form.priority.value as any);
+                        form.content.value = '';
+                        setSelectedRecipient('');
+                      }
+                    }}
                   >
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-gray-900 font-medium">Notification</span>
-                      <span className="text-sm text-gray-500">
-                        {notification.timestamp.toLocaleTimeString()}
-                        {!notification.read && (
-                          <span className="ml-2 text-xs text-yellow-500">●</span>
-                        )}
-                      </span>
-                      <button
-                        className="ml-2 text-xs text-red-500 hover:underline"
-                        onClick={e => { e.stopPropagation(); deleteNotification(notification.id); }}
-                        title="Delete"
-                      >Delete</button>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col md:flex-row gap-2">
+                        <div className="relative flex-1">
+                          <Users className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                          <select 
+                            className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            value={selectedRecipient}
+                            onChange={(e) => setSelectedRecipient(e.target.value)}
+                          >
+                            <option value="">Broadcast to all</option>
+                            {users.map(user => (
+                              <option key={user.email} value={user.email}>
+                                {user.name} ({user.email})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <select name="priority" className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                          <option value="high">High Priority</option>
+                          <option value="medium">Medium Priority</option>
+                          <option value="low">Low Priority</option>
+                        </select>
+                      </div>
+                      <div className="flex gap-2">
+                        <input 
+                          name="content" 
+                          placeholder="Type your message..." 
+                          className="border border-gray-300 rounded-lg px-3 py-2 flex-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                          required 
+                        />
+                        <button 
+                          type="submit" 
+                          disabled={sending}
+                          className="bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white px-6 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                        >
+                          {sending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                          Send
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-gray-600">{notification.content}</p>
+                  </form>
+                  
+                  <div className="space-y-4">
+                    {filteredMessages.length === 0 && (
+                      <div className="text-center text-gray-400 py-8">
+                        <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                        <p>No messages found.</p>
+                      </div>
+                    )}
+                    {filteredMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={getMessageClassName(message)}
+                        onClick={() => !message.read && markMessageRead(message.id)}
+                        style={{ cursor: message.read ? 'default' : 'pointer' }}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h3 className="font-semibold text-gray-900">{message.sender}</h3>
+                            {message.recipientEmail && (
+                              <p className="text-xs text-gray-500">
+                                To: {message.recipientName || message.recipientEmail}
+                              </p>
+                            )}
+                            {!message.recipientEmail && (
+                              <p className="text-xs text-blue-600">Broadcast message</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500">
+                              {message.timestamp.toLocaleTimeString()}
+                            </span>
+                            {!message.read && (
+                              <span className="text-xs text-blue-500">●</span>
+                            )}
+                            <button
+                              className="text-xs text-red-500 hover:underline"
+                              onClick={e => { e.stopPropagation(); deleteMessage(message.id); }}
+                              title="Delete"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-gray-600">{message.content}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+                </>
+              )}
+
+              {activeTab === 'notifications' && (
+                <>
+                  <form
+                    className="flex flex-col md:flex-row gap-2 mb-4"
+                    onSubmit={e => {
+                      e.preventDefault();
+                      const form = e.target as typeof e.target & { content: { value: string } };
+                      if (form.content.value.trim()) {
+                        addNotification(form.content.value);
+                        form.content.value = '';
+                      }
+                    }}
+                  >
+                    <input 
+                      name="content" 
+                      placeholder="Add notification..." 
+                      className="border border-gray-300 rounded-lg px-3 py-2 flex-1 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500" 
+                      required 
+                    />
+                    <button 
+                      type="submit" 
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg transition-colors"
+                    >
+                      Add
+                    </button>
+                  </form>
+                  
+                  <div className="space-y-4">
+                    {notifications.length === 0 && (
+                      <div className="text-center text-gray-400 py-8">
+                        <Bell className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                        <p>No notifications.</p>
+                      </div>
+                    )}
+                    {notifications.map((notification) => (
+                      <div
+                        key={notification.id}
+                        className={`p-4 rounded-lg border ${notification.read ? 'bg-white' : 'bg-yellow-50 border-yellow-200'}`}
+                        onClick={() => !notification.read && markNotificationRead(notification.id)}
+                        style={{ cursor: notification.read ? 'default' : 'pointer' }}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-gray-900 font-medium">Notification</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500">
+                              {notification.timestamp.toLocaleTimeString()}
+                            </span>
+                            {!notification.read && (
+                              <span className="text-xs text-yellow-500">●</span>
+                            )}
+                            <button
+                              className="text-xs text-red-500 hover:underline"
+                              onClick={e => { e.stopPropagation(); deleteNotification(notification.id); }}
+                              title="Delete"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-gray-600">{notification.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

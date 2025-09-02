@@ -13,7 +13,6 @@ import { useLanguage } from "@/contexts/LanguageContext";
 const DEFAULT_FILTERS: FilterState = {
   search: "",
   farmId: "all",
-  status: "all",
   date: "",
 };
 

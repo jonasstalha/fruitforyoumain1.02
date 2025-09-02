@@ -544,3 +544,455 @@ export const addItemToBox = async (
     throw error;
   }
 };
+
+// Messages API
+export interface Message {
+  id: string;
+  senderEmail: string;
+  senderName: string;
+  recipientEmail?: string; // If specific user, otherwise it's a broadcast
+  recipientName?: string;
+  content: string;
+  priority: 'high' | 'medium' | 'low';
+  read: boolean;
+  timestamp: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommunicationNotification {
+  id: string;
+  content: string;
+  timestamp: string;
+  read: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Helper function to convert Firestore document to Message type
+const convertMessageDoc = (doc: any): Message => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    senderEmail: data.senderEmail || "",
+    senderName: data.senderName || "",
+    recipientEmail: data.recipientEmail || null,
+    recipientName: data.recipientName || null,
+    content: data.content || "",
+    priority: data.priority || "medium",
+    read: data.read || false,
+    timestamp: timestampToISOString(data.timestamp),
+    createdAt: timestampToISOString(data.createdAt),
+    updatedAt: timestampToISOString(data.updatedAt)
+  };
+};
+
+// Helper function to convert Firestore document to Notification type
+const convertCommunicationNotificationDoc = (doc: any): CommunicationNotification => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    content: data.content || "",
+    timestamp: timestampToISOString(data.timestamp),
+    read: data.read || false,
+    createdAt: timestampToISOString(data.createdAt),
+    updatedAt: timestampToISOString(data.updatedAt)
+  };
+};
+
+// Get all messages for a specific user (either as sender or recipient)
+export const getMessagesForUser = async (userEmail: string): Promise<Message[]> => {
+  try {
+    const messagesRef = collection(db, "messages");
+    // Get messages where user is recipient OR messages that are broadcasts (recipientEmail is null)
+    const q1 = query(
+      messagesRef,
+      where("recipientEmail", "==", userEmail),
+      orderBy("createdAt", "desc")
+    );
+    const q2 = query(
+      messagesRef,
+      where("recipientEmail", "==", null),
+      orderBy("createdAt", "desc")
+    );
+    
+    const [snapshot1, snapshot2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+    
+    const userMessages = snapshot1.docs.map(convertMessageDoc);
+    const broadcastMessages = snapshot2.docs.map(convertMessageDoc);
+    
+    // Combine and sort by creation date
+    return [...userMessages, ...broadcastMessages].sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  } catch (error) {
+    console.error("Error getting messages for user:", error);
+    throw error;
+  }
+};
+
+// Get all messages (for admin/broadcast view)
+export const getAllMessages = async (): Promise<Message[]> => {
+  try {
+    const messagesRef = collection(db, "messages");
+    const q = query(messagesRef, orderBy("createdAt", "desc"));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(convertMessageDoc);
+  } catch (error) {
+    console.error("Error getting all messages:", error);
+    throw error;
+  }
+};
+
+// Send a message
+export const sendMessage = async (data: {
+  senderEmail: string;
+  senderName: string;
+  recipientEmail?: string;
+  recipientName?: string;
+  content: string;
+  priority: 'high' | 'medium' | 'low';
+}): Promise<Message> => {
+  try {
+    const messagesRef = collection(db, "messages");
+    const newMessage = {
+      senderEmail: data.senderEmail,
+      senderName: data.senderName,
+      recipientEmail: data.recipientEmail || null,
+      recipientName: data.recipientName || null,
+      content: data.content,
+      priority: data.priority,
+      read: false,
+      timestamp: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(messagesRef, newMessage);
+    const docSnap = await getDoc(docRef);
+    return convertMessageDoc(docSnap);
+  } catch (error) {
+    console.error("Error sending message:", error);
+    throw error;
+  }
+};
+
+// Mark message as read
+export const markMessageAsRead = async (messageId: string): Promise<void> => {
+  try {
+    const messageRef = doc(db, "messages", messageId);
+    await updateDoc(messageRef, {
+      read: true,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error marking message as read:", error);
+    throw error;
+  }
+};
+
+// Delete message
+export const deleteMessageFromDB = async (messageId: string): Promise<void> => {
+  try {
+    const messageRef = doc(db, "messages", messageId);
+    await deleteDoc(messageRef);
+  } catch (error) {
+    console.error("Error deleting message:", error);
+    throw error;
+  }
+};
+
+// Get all notifications
+export const getCommunicationNotifications = async (): Promise<CommunicationNotification[]> => {
+  try {
+    const notificationsRef = collection(db, "communication-notifications");
+    const q = query(notificationsRef, orderBy("createdAt", "desc"));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(convertCommunicationNotificationDoc);
+  } catch (error) {
+    console.error("Error getting notifications:", error);
+    throw error;
+  }
+};
+
+// Add notification
+export const addCommunicationNotification = async (content: string): Promise<CommunicationNotification> => {
+  try {
+    const notificationsRef = collection(db, "communication-notifications");
+    const newNotification = {
+      content,
+      timestamp: serverTimestamp(),
+      read: false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(notificationsRef, newNotification);
+    const docSnap = await getDoc(docRef);
+    return convertCommunicationNotificationDoc(docSnap);
+  } catch (error) {
+    console.error("Error adding notification:", error);
+    throw error;
+  }
+};
+
+// Mark notification as read
+export const markCommunicationNotificationAsRead = async (notificationId: string): Promise<void> => {
+  try {
+    const notificationRef = doc(db, "communication-notifications", notificationId);
+    await updateDoc(notificationRef, {
+      read: true,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error marking notification as read:", error);
+    throw error;
+  }
+};
+
+// Delete notification
+export const deleteCommunicationNotification = async (notificationId: string): Promise<void> => {
+  try {
+    const notificationRef = doc(db, "communication-notifications", notificationId);
+    await deleteDoc(notificationRef);
+  } catch (error) {
+    console.error("Error deleting notification:", error);
+    throw error;
+  }
+};
+
+// Get all users (for sending messages to specific users)
+export const getUsers = async (): Promise<{ email: string; name: string }[]> => {
+  try {
+    // This could be from a users collection if you have one, 
+    // or extracted from existing messages
+    const messagesRef = collection(db, "messages");
+    const querySnapshot = await getDocs(messagesRef);
+    
+    const users = new Set<string>();
+    querySnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.senderEmail) {
+        users.add(JSON.stringify({ email: data.senderEmail, name: data.senderName || data.senderEmail }));
+      }
+      if (data.recipientEmail) {
+        users.add(JSON.stringify({ email: data.recipientEmail, name: data.recipientName || data.recipientEmail }));
+      }
+    });
+    
+    return Array.from(users).map(user => JSON.parse(user));
+  } catch (error) {
+    console.error("Error getting users:", error);
+    throw error;
+  }
+};
+
+// Orders API
+export interface ClientOrder {
+  id: string;
+  orderNumber: string;
+  clientName: string;
+  clientEmail: string;
+  clientPhone?: string;
+  products: Array<{
+    id: string;
+    name: string;
+    quantity: number;
+    unit: string;
+    pricePerUnit: number;
+    totalPrice: number;
+  }>;
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  orderDate: string;
+  requestedDeliveryDate: string;
+  actualDeliveryDate?: string;
+  totalAmount: number;
+  priority: 'high' | 'medium' | 'low';
+  notes?: string;
+  selected?: boolean;
+  shippingAddress: {
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
+  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Helper function to convert Firestore document to ClientOrder type
+const convertClientOrderDoc = (doc: any): ClientOrder => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    orderNumber: data.orderNumber || '',
+    clientName: data.clientName || '',
+    clientEmail: data.clientEmail || '',
+    clientPhone: data.clientPhone || '',
+    products: data.products || [],
+    status: data.status || 'pending',
+    orderDate: timestampToISOString(data.orderDate),
+    requestedDeliveryDate: timestampToISOString(data.requestedDeliveryDate),
+    actualDeliveryDate: data.actualDeliveryDate ? timestampToISOString(data.actualDeliveryDate) : undefined,
+    totalAmount: data.totalAmount || 0,
+    priority: data.priority || 'medium',
+    notes: data.notes || '',
+    selected: false,
+    shippingAddress: data.shippingAddress || {
+      street: '',
+      city: '',
+      state: '',
+      zipCode: '',
+      country: ''
+    },
+    paymentStatus: data.paymentStatus || 'pending',
+    createdAt: timestampToISOString(data.createdAt),
+    updatedAt: timestampToISOString(data.updatedAt)
+  };
+};
+
+// Get all client orders
+export const getClientOrders = async (): Promise<ClientOrder[]> => {
+  try {
+    console.log("Fetching client orders from Firestore");
+    const ordersRef = collection(db, "client-orders");
+    const q = query(ordersRef, orderBy("createdAt", "desc"));
+    const querySnapshot = await getDocs(q);
+    const orders = querySnapshot.docs.map(convertClientOrderDoc);
+    console.log("Fetched client orders:", orders);
+    return orders;
+  } catch (error) {
+    console.error("Error getting client orders:", error);
+    throw error;
+  }
+};
+
+// Add new client order
+export const addClientOrder = async (data: Omit<ClientOrder, 'id' | 'createdAt' | 'updatedAt' | 'selected'>): Promise<ClientOrder> => {
+  try {
+    console.log("Adding client order to Firestore:", data);
+    
+    const ordersRef = collection(db, "client-orders");
+    const newOrder = {
+      ...data,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    console.log("Creating order document with data:", newOrder);
+    const docRef = await addDoc(ordersRef, newOrder);
+    console.log("Order document created with ID:", docRef.id);
+    
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+      console.error("Document not found after creation:", docRef.id);
+      throw new Error("Failed to create order document");
+    }
+    
+    const order = convertClientOrderDoc(docSnap);
+    console.log("Created order:", order);
+    
+    return order;
+  } catch (error) {
+    console.error("Error adding client order:", error);
+    if (error instanceof Error) {
+      throw new Error(`Failed to add order: ${error.message}`);
+    }
+    throw error;
+  }
+};
+
+// Update client order
+export const updateClientOrder = async (id: string, data: Partial<Omit<ClientOrder, 'id' | 'createdAt' | 'updatedAt' | 'selected'>>): Promise<ClientOrder> => {
+  try {
+    console.log("Updating client order in Firestore:", { id, data });
+    
+    const orderRef = doc(db, "client-orders", id);
+    const updateData = {
+      ...data,
+      updatedAt: serverTimestamp()
+    };
+    
+    console.log("Updating order document with data:", updateData);
+    await updateDoc(orderRef, updateData);
+    
+    const docSnap = await getDoc(orderRef);
+    const order = convertClientOrderDoc(docSnap);
+    console.log("Updated order:", order);
+    
+    return order;
+  } catch (error) {
+    console.error("Error updating client order:", error);
+    throw error;
+  }
+};
+
+// Delete client order
+export const deleteClientOrder = async (id: string): Promise<void> => {
+  try {
+    console.log("Deleting client order from Firestore:", id);
+    const orderRef = doc(db, "client-orders", id);
+    await deleteDoc(orderRef);
+    console.log("Order deleted successfully");
+  } catch (error) {
+    console.error("Error deleting client order:", error);
+    throw error;
+  }
+};
+
+// Bulk update client orders status
+export const bulkUpdateOrderStatus = async (orderIds: string[], status: ClientOrder['status']): Promise<void> => {
+  try {
+    console.log("Bulk updating order status:", { orderIds, status });
+    const promises = orderIds.map(id => {
+      const orderRef = doc(db, "client-orders", id);
+      return updateDoc(orderRef, {
+        status,
+        updatedAt: serverTimestamp()
+      });
+    });
+    await Promise.all(promises);
+    console.log("Bulk update completed successfully");
+  } catch (error) {
+    console.error("Error bulk updating orders:", error);
+    throw error;
+  }
+};
+
+// Get order statistics
+export const getOrderStats = async (): Promise<{
+  total: number;
+  pending: number;
+  processing: number;
+  shipped: number;
+  delivered: number;
+  cancelled: number;
+  totalRevenue: number;
+  averageOrderValue: number;
+}> => {
+  try {
+    const ordersRef = collection(db, "client-orders");
+    const querySnapshot = await getDocs(ordersRef);
+    const orders = querySnapshot.docs.map(convertClientOrderDoc);
+    
+    const stats = {
+      total: orders.length,
+      pending: orders.filter(o => o.status === 'pending').length,
+      processing: orders.filter(o => o.status === 'processing').length,
+      shipped: orders.filter(o => o.status === 'shipped').length,
+      delivered: orders.filter(o => o.status === 'delivered').length,
+      cancelled: orders.filter(o => o.status === 'cancelled').length,
+      totalRevenue: orders.filter(o => o.status !== 'cancelled').reduce((sum, order) => sum + order.totalAmount, 0),
+      averageOrderValue: 0
+    };
+    
+    stats.averageOrderValue = stats.total > 0 ? stats.totalRevenue / stats.total : 0;
+    
+    return stats;
+  } catch (error) {
+    console.error("Error getting order stats:", error);
+    throw error;
+  }
+};
