@@ -7,12 +7,13 @@ import * as firebaseService from "./firebaseService";
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 0, // Consider data stale immediately to allow refetching
-      refetchOnWindowFocus: true,
+      staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
+      gcTime: 10 * 60 * 1000, // Keep unused data in cache for 10 minutes
+      refetchOnWindowFocus: false, // Don't refetch on window focus to reduce requests
       refetchOnMount: true,
       refetchOnReconnect: true,
-      retry: 1,
-      retryDelay: 1000,
+      retry: 3, // Increase retry attempts
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
     },
   },
 });
@@ -35,29 +36,27 @@ export async function apiRequest<T>(
     switch (method) {
       case "GET":
         if (endpoint === "/api/avocado-tracking") {
-          return await firebaseService.getAvocadoTrackingData();
+          return await firebaseService.getAvocadoTrackingData() as T;
         }
         if (endpoint.startsWith("/api/avocado-tracking/")) {
           const lotNumber = endpoint.split("/").pop();
           if (lotNumber) {
-            const entries = await firebaseService.getAvocadoTrackingData();
-            const entry = entries.find(
-              (lot) => lot.harvest.lotNumber === lotNumber
-            );
+            // Use the optimized function for single lot lookup
+            const entry = await firebaseService.getAvocadoTrackingByLotNumber(lotNumber);
             if (!entry) {
               throw new Error(`Lot ${lotNumber} not found`);
             }
-            return entry;
+            return entry as T;
           }
         }
         if (endpoint === "/api/farms") {
-          return await firebaseService.getFarms();
+          return await firebaseService.getFarms() as T;
         }
         if (endpoint === "/api/lots") {
-          return await firebaseService.getLots();
+          return await firebaseService.getLots() as T;
         }
         if (endpoint === "/api/stats") {
-          return await firebaseService.getStats();
+          return await firebaseService.getStats() as T;
         }
         if (endpoint.startsWith("/pdf/")) {
           // Use the existing PDF generator for the lot
@@ -82,16 +81,16 @@ export async function apiRequest<T>(
 
       case "POST":
         if (endpoint === "/api/avocado-tracking") {
-          return await firebaseService.addAvocadoTracking(data);
+          return await firebaseService.addAvocadoTracking(data) as T;
         }
         if (endpoint === "/api/farms") {
           console.log("API Request: Adding farm with data:", data);
           const result = await firebaseService.addFarm(data);
           console.log("API Request: Farm added successfully:", result);
-          return result;
+          return result as T;
         }
         if (endpoint === "/api/lots") {
-          return await firebaseService.addLot(data);
+          return await firebaseService.addLot(data) as T;
         }
         throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
 
@@ -101,14 +100,14 @@ export async function apiRequest<T>(
           if (!id) {
             throw new Error("Invalid farm ID");
           }
-          return await firebaseService.updateFarm(id, data);
+          return await firebaseService.updateFarm(id, data) as T;
         }
         if (endpoint.startsWith("/api/lots/")) {
           const id = endpoint.split("/").pop();
           if (!id) {
             throw new Error("Invalid lot ID");
           }
-          return await firebaseService.updateLot(id, data);
+          return await firebaseService.updateLot(id, data) as T;
         }
         throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
 
@@ -119,7 +118,7 @@ export async function apiRequest<T>(
             throw new Error("Invalid farm ID");
           }
           await firebaseService.deleteFarm(id);
-          return null;
+          return null as T;
         }
         if (endpoint.startsWith("/api/lots/")) {
           const id = endpoint.split("/").pop();
@@ -127,7 +126,7 @@ export async function apiRequest<T>(
             throw new Error("Invalid lot ID");
           }
           await firebaseService.deleteLot(id);
-          return null;
+          return null as T;
         }
         throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
 
@@ -153,6 +152,13 @@ export const getAvocadoTrackingData = () => {
   return getQueryFn<AvocadoTracking[]>({
     queryKey: ['avocadoTracking'],
     queryFn: () => apiRequest<AvocadoTracking[]>('GET', '/api/avocado-tracking')
+  });
+};
+
+export const getAvocadoTrackingByLotNumber = (lotNumber: string) => {
+  return getQueryFn<AvocadoTracking>({
+    queryKey: ['avocadoTracking', lotNumber],
+    queryFn: () => apiRequest<AvocadoTracking>('GET', `/api/avocado-tracking/${lotNumber}`)
   });
 };
 
@@ -212,7 +218,7 @@ export const updateFarm = (id: string, data: Partial<Omit<Farm, 'id' | 'createdA
 
 export const updateLot = (id: number, data: Partial<Omit<Lot, 'id' | 'createdAt' | 'updatedAt'>>) => {
   return getQueryFn<Lot>({
-    queryKey: ['lots', 'update', id],
+    queryKey: ['lots', 'update', id.toString()],
     queryFn: () => apiRequest<Lot>('PUT', `/api/lots/${id}`, data)
   });
 };
@@ -226,14 +232,14 @@ export const deleteFarm = (id: string) => {
 
 export const deleteLot = (id: number) => {
   return getQueryFn<void>({
-    queryKey: ['lots', 'delete', id],
+    queryKey: ['lots', 'delete', id.toString()],
     queryFn: () => apiRequest<void>('DELETE', `/api/lots/${id}`)
   });
 };
 
 export const generatePDF = (lotId: string | number) => {
   return getQueryFn<string>({
-    queryKey: ['pdf', lotId],
+    queryKey: ['pdf', lotId.toString()],
     queryFn: () => apiRequest<string>('GET', `/pdf/${lotId}`)
   });
 };

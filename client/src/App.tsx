@@ -7,6 +7,7 @@ import DashboardPage from "./pages/dashboard-page";
 import NewEntryPage from "@/pages/new-entry-page";
 import ScanPage from "@/pages/tracability/scan-page";
 import LotDetailPage from "@/pages/lot-detail-page";
+import MultiLotDetailPage from "@/pages/multi-lot-detail-page";
 import FarmsPage from "@/pages/farms-page";
 import UsersPage from "@/pages/users-page";
 import WarehousesPage from "@/pages/warehouses-page";
@@ -94,6 +95,8 @@ function AuthenticatedRoutes() {
         <Route path="/commande-client" component={CommandeClient} />
         <Route path="/lots" component={LotsPage} />
         <Route path="/lots/:id/barcode" component={LotBarcodePage} />
+        <Route path="/lot-detail/:lotNumber" component={LotDetailPage} />
+        <Route path="/multi-lot-detail/:id" component={MultiLotDetailPage} />
         <Route path="/farms" component={FarmsPage} />
         <Route path="/farms/:id" component={FarmDetailPage} />
         <Route path="/users" component={UsersPage} />

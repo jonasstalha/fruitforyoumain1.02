@@ -7,17 +7,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Loader2, Save, CheckCircle, Clock, ArrowLeft, ArrowRight, Package, Truck, Factory, Warehouse, Ship, MapPin } from "lucide-react";
+import { AlertCircle, Loader2, Save, CheckCircle, Clock, ArrowLeft, ArrowRight, Package, Truck, Factory, Warehouse, Ship, MapPin, Users, Globe } from "lucide-react";
 import { addAvocadoTracking, getFarms } from "@/lib/firebaseService";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useMultiLots } from "@/hooks/useMultiLots";
+import { useAuth } from "@/hooks/use-auth";
+import MultiLotSelector from "@/components/multi-lot/MultiLotSelector";
+import { MultiLot } from "@/lib/multiLotService";
 
 export default function NewEntryPage() {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [location, setLocation] = useLocation();
   const [farms, setFarms] = useState([]);
   const [error, setError] = useState('');
+  const [showLotSelector, setShowLotSelector] = useState(true);
+  const [selectedLot, setSelectedLot] = useState<MultiLot | null>(null);
+
+  const { 
+    addLot, 
+    updateLot, 
+    updateLotStep, 
+    completeLot, 
+    loading: multiLotLoading, 
+    error: multiLotError 
+  } = useMultiLots();
 
   useEffect(() => {
     const loadFarms = async () => {
@@ -29,90 +45,139 @@ export default function NewEntryPage() {
       }
     };
     loadFarms();
+
+    // Check if lot ID is provided in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const lotId = urlParams.get('lotId');
+    if (lotId) {
+      // Find and select the lot
+      // This will be handled by the subscription in useMultiLots
+      setShowLotSelector(false);
+    }
   }, []);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
-  const [draftId, setDraftId] = useState(null);
   const [lastSaved, setLastSaved] = useState(null);
 
-  const [formData, setFormData] = useState({
-    harvest: {
-      harvestDate: "",
-      farmLocation: "",
-      farmerId: "",
-      lotNumber: "",
-      variety: "hass",
-      avocadoType: "",
-    },
-    transport: {
-      lotNumber: "",
-      transportCompany: "",
-      driverName: "",
-      vehicleId: "",
-      departureDateTime: "",
-      arrivalDateTime: "",
-      temperature: 0,
-    },
-    sorting: {
-      lotNumber: "",
-      sortingDate: "",
-      qualityGrade: "A",
-      rejectedCount: 0,
-      notes: "",
-    },
-    packaging: {
-      lotNumber: "",
+  // Initialize formData from selected lot or create new
+  const [formData, setFormData] = useState(() => {
+    if (selectedLot) {
+      return {
+        ...selectedLot,
+        selectedFarm: selectedLot.harvest?.farmLocation || "",
+        packagingDate: selectedLot.packaging?.packagingDate || "",
+        boxId: selectedLot.packaging?.boxId || "",
+        boxTypes: selectedLot.packaging?.boxTypes || [],
+        calibers: selectedLot.packaging?.calibers || [],
+        avocadoCount: selectedLot.packaging?.avocadoCount || 0,
+        status: selectedLot.status || "draft",
+        completedSteps: selectedLot.completedSteps || [],
+        createdAt: selectedLot.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return {
+      harvest: {
+        harvestDate: "",
+        farmLocation: "",
+        farmerId: "",
+        lotNumber: "",
+        variety: "hass",
+        avocadoType: "",
+      },
+      transport: {
+        lotNumber: "",
+        transportCompany: "",
+        driverName: "",
+        vehicleId: "",
+        departureDateTime: "",
+        arrivalDateTime: "",
+        temperature: 0,
+      },
+      sorting: {
+        lotNumber: "",
+        sortingDate: "",
+        qualityGrade: "A",
+        rejectedCount: 0,
+        notes: "",
+      },
+      packaging: {
+        lotNumber: "",
+        packagingDate: "",
+        boxId: "",
+        workerIds: [],
+        netWeight: 0,
+        avocadoCount: 0,
+        boxType: "case",
+        boxTypes: [],
+        calibers: [],
+        boxWeights: [],
+        paletteNumbers: [],
+      },
+      storage: {
+        boxId: "",
+        entryDate: "",
+        storageTemperature: 0,
+        storageRoomId: "",
+        exitDate: "",
+      },
+      export: {
+        boxId: "",
+        loadingDate: "",
+        containerId: "",
+        driverName: "",
+        vehicleId: "",
+        destination: "",
+      },
+      delivery: {
+        boxId: "",
+        estimatedDeliveryDate: "",
+        actualDeliveryDate: "",
+        clientName: "",
+        clientLocation: "",
+        notes: "",
+      },
+      selectedFarm: "",
       packagingDate: "",
       boxId: "",
-      workerIds: [],
-      netWeight: 0,
-      avocadoCount: 0,
-      boxType: "case",
       boxTypes: [],
       calibers: [],
-      boxWeights: [],
-      paletteNumbers: [],
-    },
-    storage: {
-      boxId: "",
-      entryDate: "",
-      storageTemperature: 0,
-      storageRoomId: "",
-      exitDate: "",
-    },
-    export: {
-      boxId: "",
-      loadingDate: "",
-      containerId: "",
-      driverName: "",
-      vehicleId: "",
-      destination: "",
-    },
-    delivery: {
-      boxId: "",
-      estimatedDeliveryDate: "",
-      actualDeliveryDate: "",
-      clientName: "",
-      clientLocation: "",
-      notes: "",
-    },
-    selectedFarm: "",
-    packagingDate: "",
-    boxId: "",
-    boxTypes: [],
-    calibers: [],
-    avocadoCount: 0,
-    status: "draft",
-    completedSteps: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+      avocadoCount: 0,
+      status: "draft",
+      completedSteps: [],
+      currentStep: 1,
+      assignedUsers: user ? [user.uid] : [],
+      globallyAccessible: true,
+      createdBy: user?.uid || "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
   });
 
-  const toast = (message) => {
-    // Mock toast function for demo
-    console.log(message.title + ": " + message.description);
+  // Update form data when selected lot changes
+  useEffect(() => {
+    if (selectedLot) {
+      setFormData({
+        ...selectedLot,
+        selectedFarm: selectedLot.harvest?.farmLocation || "",
+        packagingDate: selectedLot.packaging?.packagingDate || "",
+        boxId: selectedLot.packaging?.boxId || "",
+        boxTypes: selectedLot.packaging?.boxTypes || [],
+        calibers: selectedLot.packaging?.calibers || [],
+        avocadoCount: selectedLot.packaging?.avocadoCount || 0,
+        updatedAt: new Date().toISOString(),
+      });
+      setCurrentStep(selectedLot.currentStep || 1);
+      setShowLotSelector(false);
+    }
+  }, [selectedLot]);
+
+  const toast = (message: string) => {
+    // Simple toast function for notifications
+    console.log("🎉 " + message);
+    // You can replace this with actual toast implementation later
   };
 
   const validateCurrentStep = () => {
@@ -136,34 +201,127 @@ export default function NewEntryPage() {
     }
   };
 
+  const validateAllSteps = () => {
+    const step1Valid = formData.harvest.harvestDate && formData.harvest.farmerId && formData.harvest.lotNumber;
+    const step2Valid = formData.transport.transportCompany && formData.transport.driverName;
+    const step3Valid = formData.sorting.sortingDate && formData.sorting.qualityGrade;
+    const step4Valid = formData.packagingDate && formData.boxId;
+    const step5Valid = formData.storage.entryDate && formData.storage.storageRoomId;
+    const step6Valid = formData.export.loadingDate && formData.export.containerId;
+    const step7Valid = formData.delivery.estimatedDeliveryDate && formData.delivery.clientName;
+    
+    // Debug logging
+    console.log('Step validation debug:', {
+      step1Valid,
+      step2Valid, 
+      step3Valid,
+      step4Valid,
+      step5Valid,
+      step6Valid,
+      step7Valid,
+      formData: {
+        harvest: formData.harvest,
+        transport: formData.transport,
+        sorting: formData.sorting,
+        packagingDate: formData.packagingDate,
+        boxId: formData.boxId,
+        storage: formData.storage,
+        export: formData.export,
+        delivery: formData.delivery
+      }
+    });
+    
+    return step1Valid && step2Valid && step3Valid && step4Valid && step5Valid && step6Valid && step7Valid;
+  };
+
   const getStepCompletionPercentage = () => {
-    const completedSteps = formData.completedSteps?.length || 0;
-    return Math.round((completedSteps / 7) * 100);
+    // Auto-mark completed steps based on validation
+    const step1Valid = formData.harvest.harvestDate && formData.harvest.farmerId && formData.harvest.lotNumber;
+    const step2Valid = formData.transport.transportCompany && formData.transport.driverName;
+    const step3Valid = formData.sorting.sortingDate && formData.sorting.qualityGrade;
+    const step4Valid = formData.packagingDate && formData.boxId;
+    const step5Valid = formData.storage.entryDate && formData.storage.storageRoomId;
+    const step6Valid = formData.export.loadingDate && formData.export.containerId;
+    const step7Valid = formData.delivery.estimatedDeliveryDate && formData.delivery.clientName;
+    
+    const validSteps = [step1Valid, step2Valid, step3Valid, step4Valid, step5Valid, step6Valid, step7Valid];
+    const completedCount = validSteps.filter(Boolean).length;
+    
+    console.log('Real-time progress calculation:', {
+      validSteps,
+      completedCount,
+      percentage: Math.round((completedCount / 7) * 100),
+      formDataCompletedSteps: formData.completedSteps
+    });
+    
+    return Math.round((completedCount / 7) * 100);
   };
 
   const saveDraft = async (silent = false) => {
     setIsSavingDraft(true);
     try {
-      // Remove id, createdAt, and updatedAt from formData
-      const { id, createdAt, updatedAt, ...draftData } = formData;
-
-      // Add draft status
-      const draftSubmission = {
-        ...draftData,
-        status: 'draft',
-        lastSaved: new Date().toISOString()
-      };
-
-      // Save draft to Firebase
-      const savedDraft = await addAvocadoTracking(draftSubmission);
-      setDraftId(savedDraft.id);
+      if (selectedLot && selectedLot.id) {
+        // Update existing lot
+        const { id, createdAt, updatedAt, ...updateData } = formData;
+        await updateLot(selectedLot.id, {
+          ...updateData,
+          status: 'draft',
+          lastSaved: new Date().toISOString()
+        });
+      } else {
+        // Create new lot
+        const { id, createdAt, updatedAt, ...draftData } = formData;
+        const draftSubmission = {
+          ...draftData,
+          status: 'draft',
+          lastSaved: new Date().toISOString(),
+          lotNumber: draftData.harvest?.lotNumber || `LOT-${Date.now()}`
+        };
+        
+        const newLotId = await addLot(draftSubmission);
+        // Note: selectedLot will be updated through the subscription
+      }
+      
       setLastSaved(new Date().toISOString());
+      if (!silent) {
+        toast("Brouillon sauvegardé - Vos modifications ont été sauvegardées.");
+      }
     } catch (error) {
       console.error('Error saving draft:', error);
-      // Show error alert
       setError('Failed to save draft. Please try again.');
     } finally {
       setIsSavingDraft(false);
+    }
+  };
+
+  const forceCompleteLot = async () => {
+    if (selectedLot && selectedLot.id) {
+      try {
+        setIsSubmitting(true);
+        
+        // Force mark all steps as completed
+        const allSteps = [1, 2, 3, 4, 5, 6, 7];
+        
+        // Update the lot with all steps completed
+        await updateLot(selectedLot.id, {
+          completedSteps: allSteps,
+          status: 'completed',
+          updatedAt: new Date().toISOString()
+        });
+        
+        // Complete and archive the lot
+        await completeLot(selectedLot.id);
+        
+        toast("Lot finalisé ! Le lot a été marqué comme 100% complété et archivé.");
+        
+        // Navigate to lots page
+        setLocation('/lots');
+      } catch (error) {
+        console.error('Error force completing lot:', error);
+        setError('Failed to finalize lot. Please try again.');
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -172,17 +330,32 @@ export default function NewEntryPage() {
     setIsSubmitting(true);
 
     try {
-      // Remove id, createdAt, and updatedAt from formData
-      const { id, createdAt, updatedAt, ...submissionData } = formData;
-
-      // Submit data to Firebase
-      await addAvocadoTracking(submissionData);
-
-      // Navigate to lots page after successful submission
-      setLocation('/lots');
+      if (selectedLot && selectedLot.id) {
+        // Complete the lot if all steps are done
+        const allStepsCompleted = formData.completedSteps?.length === 7;
+        
+        if (allStepsCompleted) {
+          await completeLot(selectedLot.id);
+          toast("Lot terminé! Le lot a été marqué comme terminé et sera archivé.");
+          // Navigate to lots page
+          setLocation('/lots');
+        } else {
+          // Update the lot with current progress
+          const { id, createdAt, updatedAt, ...updateData } = formData;
+          await updateLot(selectedLot.id, {
+            ...updateData,
+            status: 'in-progress'
+          });
+          toast("Lot mis à jour - Le lot a été mis à jour avec les dernières informations.");
+        }
+      } else {
+        // This shouldn't happen, but fallback to old behavior
+        const { id, createdAt, updatedAt, ...submissionData } = formData;
+        await addAvocadoTracking(submissionData);
+        setLocation('/lots');
+      }
     } catch (error) {
       console.error('Error submitting form:', error);
-      // Show error alert
       setError('Failed to submit form. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -204,8 +377,32 @@ export default function NewEntryPage() {
     });
   };
 
-  const markStepComplete = () => {
-    if (validateCurrentStep()) {
+  const markStepComplete = async () => {
+    if (validateCurrentStep() && selectedLot && selectedLot.id) {
+      try {
+        // Update the step data based on current step
+        const stepData = getStepData(currentStep);
+        await updateLotStep(selectedLot.id, currentStep, stepData);
+        
+        setFormData(prev => ({
+          ...prev,
+          completedSteps: [...new Set([...(prev.completedSteps || []), currentStep])],
+          updatedAt: new Date().toISOString(),
+        }));
+
+        // Check if all steps are now completed
+        const newCompletedSteps = [...new Set([...(formData.completedSteps || []), currentStep])];
+        if (newCompletedSteps.length === 7 && validateAllSteps()) {
+          // Automatically complete and archive the lot
+          await completeLot(selectedLot.id);
+          toast("Lot complété ! Le lot a été automatiquement complété et archivé.");
+        }
+      } catch (error) {
+        console.error('Error updating step:', error);
+        setError('Failed to update step. Please try again.');
+      }
+    } else if (validateCurrentStep()) {
+      // For new lots, just mark locally
       setFormData(prev => ({
         ...prev,
         completedSteps: [...new Set([...(prev.completedSteps || []), currentStep])],
@@ -214,8 +411,42 @@ export default function NewEntryPage() {
     }
   };
 
-  const nextStep = () => {
-    markStepComplete();
+  const getStepData = (step: number) => {
+    switch (step) {
+      case 1:
+        return { harvest: formData.harvest };
+      case 2:
+        return { transport: formData.transport };
+      case 3:
+        return { sorting: formData.sorting };
+      case 4:
+        return { 
+          packaging: {
+            packagingDate: formData.packagingDate,
+            boxId: formData.boxId,
+            boxTypes: formData.boxTypes || [],
+            calibers: formData.calibers || [],
+            avocadoCount: formData.avocadoCount || 0,
+            workerIds: formData.packaging?.workerIds || [],
+            netWeight: formData.packaging?.netWeight || 0,
+            boxType: formData.packaging?.boxType || "",
+            boxWeights: formData.packaging?.boxWeights || [],
+            paletteNumbers: formData.packaging?.paletteNumbers || []
+          }
+        };
+      case 5:
+        return { storage: formData.storage };
+      case 6:
+        return { export: formData.export };
+      case 7:
+        return { delivery: formData.delivery };
+      default:
+        return {};
+    }
+  };
+
+  const nextStep = async () => {
+    await markStepComplete();
     setCurrentStep(prev => Math.min(prev + 1, 7));
   };
 
@@ -223,6 +454,93 @@ export default function NewEntryPage() {
 
   const goToStep = (step) => {
     setCurrentStep(step);
+  };
+
+  const handleLotSelect = (lot: MultiLot) => {
+    setSelectedLot(lot);
+    setShowLotSelector(false);
+  };
+
+  const handleNewLot = () => {
+    setSelectedLot(null);
+    setCurrentStep(1);
+    setFormData({
+      harvest: {
+        harvestDate: "",
+        farmLocation: "",
+        farmerId: "",
+        lotNumber: "",
+        variety: "hass",
+        avocadoType: "",
+      },
+      transport: {
+        lotNumber: "",
+        transportCompany: "",
+        driverName: "",
+        vehicleId: "",
+        departureDateTime: "",
+        arrivalDateTime: "",
+        temperature: 0,
+      },
+      sorting: {
+        lotNumber: "",
+        sortingDate: "",
+        qualityGrade: "A",
+        rejectedCount: 0,
+        notes: "",
+      },
+      packaging: {
+        lotNumber: "",
+        packagingDate: "",
+        boxId: "",
+        workerIds: [],
+        netWeight: 0,
+        avocadoCount: 0,
+        boxType: "case",
+        boxTypes: [],
+        calibers: [],
+        boxWeights: [],
+        paletteNumbers: [],
+      },
+      storage: {
+        boxId: "",
+        entryDate: "",
+        storageTemperature: 0,
+        storageRoomId: "",
+        exitDate: "",
+      },
+      export: {
+        boxId: "",
+        loadingDate: "",
+        containerId: "",
+        driverName: "",
+        vehicleId: "",
+        destination: "",
+      },
+      delivery: {
+        boxId: "",
+        estimatedDeliveryDate: "",
+        actualDeliveryDate: "",
+        clientName: "",
+        clientLocation: "",
+        notes: "",
+      },
+      selectedFarm: "",
+      packagingDate: "",
+      boxId: "",
+      boxTypes: [],
+      calibers: [],
+      avocadoCount: 0,
+      status: "draft",
+      completedSteps: [],
+      currentStep: 1,
+      assignedUsers: user ? [user.uid] : [],
+      globallyAccessible: true,
+      createdBy: user?.uid || "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    setShowLotSelector(false);
   };
 
   const handleBoxTypeToggle = (boxType) => {
@@ -987,15 +1305,78 @@ export default function NewEntryPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-purple-50 p-4">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2 flex items-center gap-3">
-            🥑 <span className="bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-              Nouveau Suivi d'Avocats
-            </span>
-          </h1>
-          <p className="text-gray-600 text-lg">Suivez le parcours de vos avocats de la ferme à la livraison</p>
-        </div>
+        {/* Lot Selector */}
+        {showLotSelector && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <Package className="h-6 w-6" />
+                Gestion des lots multiples
+              </CardTitle>
+              <p className="text-gray-600">
+                Sélectionnez un lot existant ou créez-en un nouveau. Les lots sont sauvegardés globalement et accessibles à tous les utilisateurs.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <MultiLotSelector
+                selectedLot={selectedLot}
+                onLotSelect={handleLotSelect}
+                onNewLot={handleNewLot}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Show lot management buttons when a lot is selected */}
+        {!showLotSelector && (
+          <div className="mb-6 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowLotSelector(true)}
+                className="flex items-center gap-2"
+              >
+                <Package className="h-4 w-4" />
+                Changer de lot
+              </Button>
+              {selectedLot && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Users className="h-4 w-4" />
+                  <span>Lot: {selectedLot.lotNumber || selectedLot.harvest?.lotNumber}</span>
+                  {selectedLot.globallyAccessible && (
+                    <div className="flex items-center gap-1 text-green-600">
+                      <Globe className="h-3 w-3" />
+                      <span className="text-xs">Global</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {selectedLot && selectedLot.status === 'completed' && (
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle className="h-4 w-4" />
+                <span className="text-sm font-medium">Lot terminé</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!showLotSelector && (
+          <>
+            {/* Header */}
+            <div className="mb-8">
+              <h1 className="text-4xl font-bold text-gray-800 mb-2 flex items-center gap-3">
+                🥑 <span className="bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+                  {selectedLot ? 'Continuer le Suivi' : 'Nouveau Suivi d\'Avocats'}
+                </span>
+              </h1>
+              <p className="text-gray-600 text-lg">
+                {selectedLot 
+                  ? `Continuez le suivi du lot ${selectedLot.lotNumber || selectedLot.harvest?.lotNumber}`
+                  : 'Suivez le parcours de vos avocats de la ferme à la livraison'
+                }
+              </p>
+            </div>
 
         {/* Progress Bar */}
         <div className="mb-8">
@@ -1104,18 +1485,36 @@ export default function NewEntryPage() {
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button
-                  type="submit"
-                  disabled={isSubmitting || !validateCurrentStep()}
-                  className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCircle className="h-4 w-4" />
+                <div className="flex gap-2">
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting || !validateCurrentStep()}
+                    className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
+                    {isSubmitting ? t('newEntry.saving') : t('newEntry.finalize')}
+                  </Button>
+                  
+                  {selectedLot && selectedLot.id && (
+                    <Button
+                      type="button"
+                      onClick={forceCompleteLot}
+                      disabled={isSubmitting}
+                      className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                    >
+                      {isSubmitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Globe className="h-4 w-4" />
+                      )}
+                      Finaliser le suivi complet
+                    </Button>
                   )}
-                  {isSubmitting ? t('newEntry.saving') : t('newEntry.finalize')}
-                </Button>
+                </div>
               )}
             </div>
           </div>
@@ -1129,6 +1528,8 @@ export default function NewEntryPage() {
               {t('newEntry.validationMessage')}
             </AlertDescription>
           </Alert>
+        )}
+          </>
         )}
       </div>
     </div>

@@ -18,6 +18,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { storage } from './firebase';
 import { generateLotPDF } from './pdfGenerator';
 import { uploadFileToStorage } from './firebaseHelpers';
+import { PerformanceMonitor, NetworkMonitor, LotCache } from './performanceUtils';
 
 // Helper function to convert Firestore timestamp to ISO string
 const timestampToISOString = (timestamp: any) => {
@@ -65,62 +66,62 @@ const convertAvocadoTrackingDoc = (doc: any): AvocadoTracking => {
   return {
     id: doc.id,
     harvest: {
-      harvestDate: timestampToISOString(data.harvest.harvestDate),
-      farmLocation: data.harvest.farmLocation,
-      farmerId: data.harvest.farmerId,
-      lotNumber: data.harvest.lotNumber,
-      variety: data.harvest.variety
+      harvestDate: timestampToISOString(data.harvest?.harvestDate) || "",
+      farmLocation: data.harvest?.farmLocation || "Unknown Location",
+      farmerId: data.harvest?.farmerId || "Unknown Farmer",
+      lotNumber: data.harvest?.lotNumber || "Unknown Lot",
+      variety: data.harvest?.variety || "Unknown Variety"
     },
     transport: {
-      lotNumber: data.transport.lotNumber,
-      transportCompany: data.transport.transportCompany,
-      driverName: data.transport.driverName,
-      vehicleId: data.transport.vehicleId,
-      departureDateTime: timestampToISOString(data.transport.departureDateTime),
-      arrivalDateTime: timestampToISOString(data.transport.arrivalDateTime),
-      temperature: data.transport.temperature
+      lotNumber: data.transport?.lotNumber || "Unknown Lot",
+      transportCompany: data.transport?.transportCompany || "Unknown Company",
+      driverName: data.transport?.driverName || "Unknown Driver",
+      vehicleId: data.transport?.vehicleId || "Unknown Vehicle",
+      departureDateTime: timestampToISOString(data.transport?.departureDateTime) || "",
+      arrivalDateTime: timestampToISOString(data.transport?.arrivalDateTime) || "",
+      temperature: data.transport?.temperature || 0
     },
     sorting: {
-      lotNumber: data.sorting.lotNumber,
-      sortingDate: timestampToISOString(data.sorting.sortingDate),
-      qualityGrade: data.sorting.qualityGrade,
-      rejectedCount: data.sorting.rejectedCount,
-      notes: data.sorting.notes || ""
+      lotNumber: data.sorting?.lotNumber || "Unknown Lot",
+      sortingDate: timestampToISOString(data.sorting?.sortingDate) || "",
+      qualityGrade: data.sorting?.qualityGrade || "Unknown Grade",
+      rejectedCount: data.sorting?.rejectedCount || 0,
+      notes: data.sorting?.notes || ""
     },
     packaging: {
-      lotNumber: data.packaging.lotNumber,
-      packagingDate: timestampToISOString(data.packaging.packagingDate),
-      boxId: data.packaging.boxId,
-      workerIds: data.packaging.workerIds || [],
-      netWeight: data.packaging.netWeight,
-      avocadoCount: data.packaging.avocadoCount,
-      boxType: data.packaging.boxType || "case"
+      lotNumber: data.packaging?.lotNumber || "Unknown Lot",
+      packagingDate: timestampToISOString(data.packaging?.packagingDate) || "",
+      boxId: data.packaging?.boxId || "Unknown Box",
+      workerIds: data.packaging?.workerIds || [],
+      netWeight: data.packaging?.netWeight || 0,
+      avocadoCount: data.packaging?.avocadoCount || 0,
+      boxType: data.packaging?.boxType || "case"
     },
     storage: {
-      boxId: data.storage.boxId,
-      entryDate: timestampToISOString(data.storage.entryDate),
-      storageTemperature: data.storage.storageTemperature,
-      storageRoomId: data.storage.storageRoomId,
-      exitDate: timestampToISOString(data.storage.exitDate)
+      boxId: data.storage?.boxId || "Unknown Box",
+      entryDate: timestampToISOString(data.storage?.entryDate) || "",
+      storageTemperature: data.storage?.storageTemperature || 0,
+      storageRoomId: data.storage?.storageRoomId || "Unknown Room",
+      exitDate: timestampToISOString(data.storage?.exitDate) || ""
     },
     export: {
-      boxId: data.export.boxId,
-      loadingDate: timestampToISOString(data.export.loadingDate),
-      containerId: data.export.containerId,
-      driverName: data.export.driverName,
-      vehicleId: data.export.vehicleId,
-      destination: data.export.destination
+      boxId: data.export?.boxId || "Unknown Box",
+      loadingDate: timestampToISOString(data.export?.loadingDate) || "",
+      containerId: data.export?.containerId || "Unknown Container",
+      driverName: data.export?.driverName || "Unknown Driver",
+      vehicleId: data.export?.vehicleId || "Unknown Vehicle",
+      destination: data.export?.destination || "Unknown Destination"
     },
     delivery: {
-      boxId: data.delivery.boxId,
-      estimatedDeliveryDate: timestampToISOString(data.delivery.estimatedDeliveryDate),
-      actualDeliveryDate: timestampToISOString(data.delivery.actualDeliveryDate),
-      clientName: data.delivery.clientName,
-      clientLocation: data.delivery.clientLocation,
-      notes: data.delivery.notes || ""
+      boxId: data.delivery?.boxId || "Unknown Box",
+      estimatedDeliveryDate: timestampToISOString(data.delivery?.estimatedDeliveryDate) || "",
+      actualDeliveryDate: timestampToISOString(data.delivery?.actualDeliveryDate) || "",
+      clientName: data.delivery?.clientName || "Unknown Client",
+      clientLocation: data.delivery?.clientLocation || "Unknown Location",
+      notes: data.delivery?.notes || ""
     },
-    createdAt: timestampToISOString(data.createdAt),
-    updatedAt: timestampToISOString(data.updatedAt)
+    createdAt: timestampToISOString(data.createdAt) || "",
+    updatedAt: timestampToISOString(data.updatedAt) || ""
   };
 };
 
@@ -129,8 +130,16 @@ export const getFarms = async (): Promise<Farm[]> => {
   try {
     console.log("Fetching farms from Firestore");
     const farmsRef = collection(db, "farms");
-    const q = query(farmsRef, orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
+
+    let querySnapshot;
+    try {
+      const q = query(farmsRef, orderBy("createdAt", "desc"));
+      querySnapshot = await getDocs(q);
+    } catch (indexError) {
+      console.warn("Index error, falling back to unsorted query:", indexError);
+      querySnapshot = await getDocs(farmsRef);
+    }
+
     const farms = querySnapshot.docs.map(convertFarmDoc);
     console.log("Fetched farms:", farms);
     return farms;
@@ -298,6 +307,81 @@ export const getAvocadoTrackingData = async (): Promise<AvocadoTracking[]> => {
     return querySnapshot.docs.map(convertAvocadoTrackingDoc);
   } catch (error) {
     console.error("Error getting avocado tracking data:", error);
+    throw error;
+  }
+};
+
+// Get specific avocado tracking data by lot number (optimized for lot details page)
+export const getAvocadoTrackingByLotNumber = async (lotNumber: string): Promise<AvocadoTracking | null> => {
+  try {
+    // Check cache first
+    const cached = LotCache.get(lotNumber);
+    if (cached) {
+      return cached;
+    }
+
+    NetworkMonitor.logConnectionInfo();
+    
+    return await PerformanceMonitor.measure(`fetch-lot-${lotNumber}`, async () => {
+      console.log("Searching for lot number:", lotNumber);
+      const trackingRef = collection(db, "avocado-tracking");
+      
+      // Try to query by exact lot number first (without orderBy to avoid composite index requirement)
+      const exactQuery = query(
+        trackingRef, 
+        where("harvest.lotNumber", "==", lotNumber)
+      );
+      
+      let querySnapshot = await getDocs(exactQuery);
+      
+      if (!querySnapshot.empty) {
+        console.log("Found exact match for lot number:", lotNumber);
+        // If multiple documents match, get the most recent one by sorting in memory
+        const docs = querySnapshot.docs.map(doc => ({
+          doc,
+          createdAt: doc.data().createdAt
+        }));
+        
+        // Sort by createdAt in memory (most recent first)
+        docs.sort((a, b) => {
+          const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt).getTime();
+          const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt).getTime();
+          return timeB - timeA;
+        });
+        
+        const result = convertAvocadoTrackingDoc(docs[0].doc);
+        LotCache.set(lotNumber, result);
+        return result;
+      }
+      
+      // If no exact match, try case-insensitive search by fetching all and filtering
+      // This is a fallback for cases where lot numbers might have different casing
+      console.log("No exact match found, trying fallback search");
+      const allQuery = query(trackingRef);
+      querySnapshot = await getDocs(allQuery);
+      
+      const foundDoc = querySnapshot.docs.find(doc => {
+        const data = doc.data();
+        const docLotNumber = data.harvest?.lotNumber;
+        if (!docLotNumber) return false;
+        
+        return docLotNumber.toLowerCase() === lotNumber.toLowerCase() ||
+               docLotNumber.toUpperCase() === lotNumber.toUpperCase() ||
+               docLotNumber === lotNumber;
+      });
+      
+      if (foundDoc) {
+        console.log("Found match with fallback search:", foundDoc.data().harvest?.lotNumber);
+        const result = convertAvocadoTrackingDoc(foundDoc);
+        LotCache.set(lotNumber, result);
+        return result;
+      }
+      
+      console.log("No lot found with number:", lotNumber);
+      return null;
+    });
+  } catch (error) {
+    console.error("Error getting avocado tracking by lot number:", error);
     throw error;
   }
 };
