@@ -8,6 +8,7 @@ export interface Farm {
   location: string;
   farmerId: string;
   code?: string;
+  description?: string; // Added missing property
   createdAt?: string;
   updatedAt?: string;
   active?: boolean;
@@ -18,6 +19,7 @@ export interface Lot {
   name: string;
   description: string;
   lotNumber?: string;
+  farmId?: string; // Added missing property
   createdAt?: string;
   updatedAt?: string;
 }
@@ -28,6 +30,7 @@ export interface StatsData {
   pending: number;
   totalLots?: number;
   activeFarms?: number;
+  inTransit?: number; // Added missing property
 }
 
 // Mock data for testing

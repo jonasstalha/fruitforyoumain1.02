@@ -378,6 +378,33 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    // Multi-Lot Management collection
+    function isValidMultiLotData() {
+      let data = request.resource.data;
+      return data.lotNumber is string
+        && data.status is string
+        && (data.status in ['draft', 'in-progress', 'completed', 'archived'])
+        && data.currentStep is number
+        && data.completedSteps is list
+        && data.assignedUsers is list
+        && data.globallyAccessible is bool
+        && data.createdBy is string
+        && data.harvest is map
+        && data.transport is map
+        && data.sorting is map
+        && data.packaging is map
+        && data.storage is map
+        && data.export is map
+        && data.delivery is map;
+    }
+
+    match /multi_lots/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMultiLotData();
+      allow update: if isAuthenticated() && isValidMultiLotData();
+      allow delete: if isAuthenticated();
+    }
+
     // Personnel Management collection
     match /personnel/{documentId} {
       // Allow full access for development/testing
