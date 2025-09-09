@@ -25,7 +25,9 @@ import {
   Square,
   Database,
   X,
-  Save
+  Save,
+  Grid3X3,
+  Table
 } from 'lucide-react';
 import { 
   getClientOrders, 
@@ -34,7 +36,8 @@ import {
   bulkUpdateOrderStatus,
   getOrderStats,
   addClientOrder,
-  ClientOrder 
+  ClientOrder,
+  addCommunicationNotification
 } from '../../lib/firebaseService';
 import { initializeClientOrders } from '../../lib/initClientOrders';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
@@ -68,6 +71,7 @@ const CommandeClient = () => {
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [bulkAction, setBulkAction] = useState('');
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
   // Real-time orders listener
   useEffect(() => {
@@ -847,367 +851,828 @@ const CommandeClient = () => {
 
         {/* Filters and Search */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-            <div className="lg:col-span-2 relative">
-              <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search orders, clients, products..."
-                className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 flex-1">
+              <div className="lg:col-span-2 relative">
+                <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search orders, clients, products..."
+                  className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              
+              <div className="relative">
+                <Filter className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                <select
+                  className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none transition-colors"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="processing">Processing</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              <div className="relative">
+                <select
+                  className="px-3 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none transition-colors"
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value)}
+                >
+                  <option value="all">All Priorities</option>
+                  <option value="high">High Priority</option>
+                  <option value="medium">Medium Priority</option>
+                  <option value="low">Low Priority</option>
+                </select>
+              </div>
+
+              <div className="relative">
+                <Calendar className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                <input
+                  type="date"
+                  className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                />
+              </div>
+
+              <div className="relative">
+                <Calendar className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                <input
+                  type="date"
+                  className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                />
+              </div>
             </div>
             
-            <div className="relative">
-              <Filter className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-              <select
-                className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none transition-colors"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+            {/* View Toggle */}
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  viewMode === 'grid' 
+                    ? 'bg-white text-blue-600 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
               >
-                <option value="all">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="processing">Processing</option>
-                <option value="shipped">Shipped</option>
-                <option value="delivered">Delivered</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-
-            <div className="relative">
-              <select
-                className="px-3 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none transition-colors"
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
+                <Grid3X3 className="h-4 w-4" />
+                Grid
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  viewMode === 'table' 
+                    ? 'bg-white text-blue-600 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
               >
-                <option value="all">All Priorities</option>
-                <option value="high">High Priority</option>
-                <option value="medium">Medium Priority</option>
-                <option value="low">Low Priority</option>
-              </select>
-            </div>
-
-            <div className="relative">
-              <Calendar className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-              <input
-                type="date"
-                className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                value={dateRange.start}
-                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-              />
-            </div>
-
-            <div className="relative">
-              <Calendar className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-              <input
-                type="date"
-                className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                value={dateRange.end}
-                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-              />
+                <Table className="h-4 w-4" />
+                Table
+              </button>
             </div>
           </div>
         </div>
 
         {/* Bulk Actions */}
         {selectedOrders.size > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-blue-800 font-medium">
-                  {selectedOrders.size} order{selectedOrders.size !== 1 ? 's' : ''} selected
-                </span>
-                <select
-                  className="border border-blue-300 rounded-lg px-3 py-1 text-sm"
-                  value={bulkAction}
-                  onChange={(e) => setBulkAction(e.target.value)}
-                >
-                  <option value="">Select action...</option>
-                  <option value="status:processing">Mark as Processing</option>
-                  <option value="status:shipped">Mark as Shipped</option>
-                  <option value="status:delivered">Mark as Delivered</option>
-                  <option value="status:cancelled">Mark as Cancelled</option>
-                  <option value="delete">Delete Selected</option>
-                </select>
-                <button
-                  onClick={handleBulkAction}
-                  disabled={!bulkAction || saving}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-1 rounded-lg text-sm transition-colors flex items-center gap-2"
-                >
-                  {saving ? (
-                    <>
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                      Processing...
-                    </>
-                  ) : (
-                    'Apply'
-                  )}
-                </button>
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-6 shadow-lg">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span className="text-blue-800 font-semibold text-lg">
+                    {selectedOrders.size} order{selectedOrders.size !== 1 ? 's' : ''} selected
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    className="border-2 border-blue-300 rounded-lg px-4 py-2 text-sm font-medium bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={bulkAction}
+                    onChange={(e) => setBulkAction(e.target.value)}
+                  >
+                    <option value="">Choose action...</option>
+                    <option value="status:processing">🔄 Mark as Processing</option>
+                    <option value="status:shipped">🚚 Mark as Shipped</option>
+                    <option value="status:delivered">✅ Mark as Delivered</option>
+                    <option value="status:cancelled">❌ Mark as Cancelled</option>
+                    <option value="delete">🗑️ Delete Selected</option>
+                  </select>
+                  <button
+                    onClick={handleBulkAction}
+                    disabled={!bulkAction || saving}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 shadow-md"
+                  >
+                    {saving ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckSquare className="h-4 w-4" />
+                        Apply Action
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
               <button
                 onClick={() => setSelectedOrders(new Set())}
-                className="text-blue-600 hover:text-blue-800 text-sm"
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1 transition-colors"
               >
+                <X className="h-4 w-4" />
                 Clear Selection
               </button>
             </div>
           </div>
         )}
 
-        {/* Orders Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left">
-                    <button
-                      onClick={handleSelectAll}
-                      className="flex items-center justify-center w-5 h-5"
-                      type="button"
-                      aria-label="Select all orders"
-                    >
-                      {selectedOrders.size === filteredOrders.length && filteredOrders.length > 0 ? (
-                        <CheckSquare className="h-5 w-5 text-blue-600" />
-                      ) : selectedOrders.size > 0 ? (
-                        <div className="h-5 w-5 bg-blue-600 rounded border-2 border-blue-600 flex items-center justify-center">
-                          <div className="h-2 w-2 bg-white rounded-sm"></div>
-                        </div>
-                      ) : (
-                        <Square className="h-5 w-5 text-gray-400" />
-                      )}
-                    </button>
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <button
-                      onClick={() => handleSort('orderNumber')}
-                      className="flex items-center gap-1 hover:text-gray-700"
-                    >
-                      Order Details
-                      {sortConfig.key === 'orderNumber' && (
-                        sortConfig.direction === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />
-                      )}
-                    </button>
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <button
-                      onClick={() => handleSort('clientName')}
-                      className="flex items-center gap-1 hover:text-gray-700"
-                    >
-                      Client
-                      {sortConfig.key === 'clientName' && (
-                        sortConfig.direction === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />
-                      )}
-                    </button>
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Products
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <button
-                      onClick={() => handleSort('status')}
-                      className="flex items-center gap-1 hover:text-gray-700"
-                    >
-                      Status
-                      {sortConfig.key === 'status' && (
-                        sortConfig.direction === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />
-                      )}
-                    </button>
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <button
-                      onClick={() => handleSort('orderDate')}
-                      className="flex items-center gap-1 hover:text-gray-700"
-                    >
-                      Dates
-                      {sortConfig.key === 'orderDate' && (
-                        sortConfig.direction === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />
-                      )}
-                    </button>
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <button
-                      onClick={() => handleSort('totalAmount')}
-                      className="flex items-center gap-1 hover:text-gray-700"
-                    >
-                      Amount
-                      {sortConfig.key === 'totalAmount' && (
-                        sortConfig.direction === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />
-                      )}
-                    </button>
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+        {/* Orders Grid - Enhanced UI/UX */}
+        {viewMode === 'grid' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Orders Overview ({filteredOrders.length})</h3>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleSelectAll}
+                  className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  {selectedOrders.size === filteredOrders.length && filteredOrders.length > 0 ? (
+                    <CheckSquare className="h-4 w-4 text-blue-600" />
+                  ) : selectedOrders.size > 0 ? (
+                    <div className="h-4 w-4 bg-blue-600 rounded border-2 border-blue-600 flex items-center justify-center">
+                      <div className="h-1.5 w-1.5 bg-white rounded-sm"></div>
+                    </div>
+                  ) : (
+                    <Square className="h-4 w-4 text-gray-400" />
+                  )}
+                  Select All ({selectedOrders.size})
+                </button>
+              </div>
+            </div>
+
+            {filteredOrders.length === 0 ? (
+              <div className="text-center py-16">
+                <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-xl font-medium text-gray-900 mb-2">No orders found</h3>
+                <p className="text-gray-600 mb-4">Try adjusting your search or filter criteria</p>
+                <button 
+                  onClick={() => setShowNewOrderModal(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 mx-auto transition-colors"
+                >
+                  <Plus className="h-5 w-5" />
+                  Create First Order
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 md:gap-6">
                 {filteredOrders.map((order) => (
-                  <React.Fragment key={`fragment-${order.id}`}>
-                    <tr className={`hover:bg-gray-50 transition-colors ${selectedOrders.has(order.id) ? 'bg-blue-50' : ''}`}>
-                      <td className="px-6 py-4">
+                  <div
+                    key={order.id}
+                    className={`bg-white border-2 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-xl transform hover:-translate-y-1 ${
+                      selectedOrders.has(order.id) 
+                        ? 'border-blue-500 shadow-lg ring-2 ring-blue-200 scale-105' 
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    {/* Card Header */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-100">
+                      <div className="flex items-center justify-between mb-2">
                         <button
                           onClick={() => handleSelectOrder(order.id)}
-                          className="flex items-center justify-center w-5 h-5"
-                          type="button"
-                          aria-label={`Select order ${order.orderNumber}`}
+                          className={`flex items-center justify-center w-6 h-6 rounded-lg border-2 transition-all duration-200 ${
+                            selectedOrders.has(order.id)
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                              : 'border-gray-300 hover:border-blue-400 bg-white'
+                          }`}
                         >
-                          {selectedOrders.has(order.id) ? (
-                            <CheckSquare className="h-5 w-5 text-blue-600" />
-                          ) : (
-                            <Square className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                          )}
+                          {selectedOrders.has(order.id) && <CheckSquare className="h-4 w-4" />}
                         </button>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-900">{order.orderNumber}</span>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(order.priority)}`}>
-                              {order.priority.toUpperCase()}
-                            </span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${getPriorityColor(order.priority)}`}>
+                          {order.priority}
+                        </span>
+                      </div>
+                      <h4 className="text-lg font-bold text-gray-900 mb-1">{order.orderNumber}</h4>
+                      <div className="text-sm text-gray-600">
+                        <p className="font-medium">{order.clientName}</p>
+                        <p className="text-xs opacity-75">{order.clientEmail}</p>
+                      </div>
+                    </div>
+
+                    {/* Card Body */}
+                    <div className="p-6 space-y-4">
+                      {/* Status Section */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                          Order Status
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-gray-50">
+                            {getStatusIcon(order.status)}
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-900">{order.clientName}</span>
-                          <span className="text-sm text-gray-500">{order.clientEmail}</span>
-                          {order.clientPhone && (
-                            <span className="text-sm text-gray-500">{order.clientPhone}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col space-y-1">
-                          {order.products.slice(0, 2).map((product, index) => (
-                            <span key={index} className="text-sm text-gray-600">
-                              {product.quantity} {product.unit} {product.name}
-                            </span>
-                          ))}
-                          {order.products.length > 2 && (
-                            <button
-                              onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
-                              className="text-sm text-blue-600 hover:text-blue-800 text-left"
-                            >
-                              +{order.products.length - 2} more items
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(order.status)}
                           <select
                             value={order.status}
-                            onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as ClientOrder['status'])}
-                            className={`text-xs font-medium border-0 rounded-full px-2.5 py-0.5 ${getStatusColor(order.status)} focus:ring-2 focus:ring-blue-500`}
+                            onChange={async (e) => {
+                              const newStatus = e.target.value as ClientOrder['status'];
+                              await handleUpdateOrderStatus(order.id, newStatus);
+                              // Send automatic notification about status change
+                              try {
+                                await addCommunicationNotification(
+                                  `🔄 Order ${order.orderNumber} status updated to ${newStatus} for client ${order.clientName}`
+                                );
+                                toast.success(`Status updated to ${newStatus}`);
+                              } catch (error) {
+                                console.error('Error adding notification:', error);
+                              }
+                            }}
+                            className={`flex-1 text-sm font-medium border rounded-lg px-3 py-2 ${getStatusColor(order.status)} focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors`}
                           >
-                            <option value="pending">Pending</option>
-                            <option value="processing">Processing</option>
-                            <option value="shipped">Shipped</option>
-                            <option value="delivered">Delivered</option>
-                            <option value="cancelled">Cancelled</option>
+                            <option value="pending">⏳ Pending</option>
+                            <option value="processing">🔄 Processing</option>
+                            <option value="shipped">🚚 Shipped</option>
+                            <option value="delivered">✅ Delivered</option>
+                            <option value="cancelled">❌ Cancelled</option>
                           </select>
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col text-sm text-gray-600">
-                          <span>Ordered: {formatDate(order.orderDate)}</span>
-                          <span>Expected: {formatDate(order.requestedDeliveryDate)}</span>
-                          {order.actualDeliveryDate && (
-                            <span className="text-green-600">Delivered: {formatDate(order.actualDeliveryDate)}</span>
-                          )}
+                      </div>
+
+                      {/* Products Section */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                          Products & Calibres ({order.products.length} items)
+                        </label>
+                        <div className="space-y-3 max-h-48 overflow-y-auto">
+                          {order.products.map((product, index) => (
+                            <div key={index} className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-4 border border-gray-200">
+                              <div className="flex justify-between items-start mb-3">
+                                <div className="flex-1">
+                                  <h5 className="font-semibold text-gray-900 text-sm">{product.name}</h5>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    {formatCurrency(product.pricePerUnit)} per {product.unit}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-bold text-gray-900">{formatCurrency(product.totalPrice)}</p>
+                                  <p className="text-xs text-green-600">Total</p>
+                                </div>
+                              </div>
+                              
+                              {/* Calibre Editor */}
+                              <div className="flex items-center gap-3 bg-white rounded-lg p-3 border">
+                                <label className="text-xs font-medium text-gray-600 whitespace-nowrap">
+                                  Calibre:
+                                </label>
+                                <div className="flex items-center gap-2 flex-1">
+                                  <button
+                                    onClick={async () => {
+                                      if (product.quantity > 1) {
+                                        const newQuantity = product.quantity - 1;
+                                        const updatedProducts = [...order.products];
+                                        updatedProducts[index] = {
+                                          ...product,
+                                          quantity: newQuantity,
+                                          totalPrice: newQuantity * product.pricePerUnit
+                                        };
+                                        const newTotal = updatedProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+                                        
+                                        try {
+                                          await updateClientOrder(order.id, {
+                                            products: updatedProducts,
+                                            totalAmount: newTotal
+                                          });
+                                          
+                                          await addCommunicationNotification(
+                                            `📦 Product calibre updated in order ${order.orderNumber}: ${product.name} quantity decreased to ${newQuantity} ${product.unit}`
+                                          );
+                                          
+                                          toast.success('Calibre updated successfully');
+                                        } catch (error) {
+                                          console.error('Error updating product:', error);
+                                          toast.error('Failed to update calibre');
+                                        }
+                                      }
+                                    }}
+                                    className="w-8 h-8 flex items-center justify-center bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition-colors"
+                                    disabled={product.quantity <= 1}
+                                  >
+                                    -
+                                  </button>
+                                  
+                                  <input
+                                    type="number"
+                                    value={product.quantity}
+                                    onChange={async (e) => {
+                                      const newQuantity = Math.max(1, parseInt(e.target.value) || 1);
+                                      const updatedProducts = [...order.products];
+                                      updatedProducts[index] = {
+                                        ...product,
+                                        quantity: newQuantity,
+                                        totalPrice: newQuantity * product.pricePerUnit
+                                      };
+                                      const newTotal = updatedProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+                                      
+                                      try {
+                                        await updateClientOrder(order.id, {
+                                          products: updatedProducts,
+                                          totalAmount: newTotal
+                                        });
+                                        
+                                        await addCommunicationNotification(
+                                          `📦 Product calibre updated in order ${order.orderNumber}: ${product.name} quantity changed to ${newQuantity} ${product.unit}`
+                                        );
+                                        
+                                        toast.success('Calibre updated successfully');
+                                      } catch (error) {
+                                        console.error('Error updating product:', error);
+                                        toast.error('Failed to update calibre');
+                                      }
+                                    }}
+                                    className="w-16 px-2 py-1 text-center text-sm font-medium border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    min="1"
+                                  />
+                                  
+                                  <button
+                                    onClick={async () => {
+                                      const newQuantity = product.quantity + 1;
+                                      const updatedProducts = [...order.products];
+                                      updatedProducts[index] = {
+                                        ...product,
+                                        quantity: newQuantity,
+                                        totalPrice: newQuantity * product.pricePerUnit
+                                      };
+                                      const newTotal = updatedProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+                                      
+                                      try {
+                                        await updateClientOrder(order.id, {
+                                          products: updatedProducts,
+                                          totalAmount: newTotal
+                                        });
+                                        
+                                        await addCommunicationNotification(
+                                          `📦 Product calibre updated in order ${order.orderNumber}: ${product.name} quantity increased to ${newQuantity} ${product.unit}`
+                                        );
+                                        
+                                        toast.success('Calibre updated successfully');
+                                      } catch (error) {
+                                        console.error('Error updating product:', error);
+                                        toast.error('Failed to update calibre');
+                                      }
+                                    }}
+                                    className="w-8 h-8 flex items-center justify-center bg-green-100 hover:bg-green-200 text-green-600 rounded-lg transition-colors"
+                                  >
+                                    +
+                                  </button>
+                                  
+                                  <span className="text-sm text-gray-600 ml-2 whitespace-nowrap">
+                                    {product.unit}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm">
-                          <div className="font-medium text-gray-900">{formatCurrency(order.totalAmount)}</div>
-                          <div className="text-gray-500">{order.products.length} item{order.products.length !== 1 ? 's' : ''}</div>
+                      </div>
+
+                      {/* Order Info */}
+                      <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Order Date</p>
+                          <p className="text-sm font-medium text-gray-900">{formatDate(order.orderDate)}</p>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button 
-                            onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
-                            className="text-gray-400 hover:text-blue-600 transition-colors"
-                            title="View Details"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Delivery</p>
+                          <p className="text-sm font-medium text-gray-900">{formatDate(order.requestedDeliveryDate)}</p>
+                        </div>
+                      </div>
+
+                      {/* Total Amount */}
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-100">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-700">Total Amount</span>
+                          <span className="text-xl font-bold text-blue-600">{formatCurrency(order.totalAmount)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Footer */}
+                    <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+                      <div className="flex items-center justify-between">
+                        <button 
+                          onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors flex items-center gap-1"
+                        >
+                          <Eye className="h-4 w-4" />
+                          {expandedOrder === order.id ? 'Hide Details' : 'View Details'}
+                        </button>
+                        <div className="flex items-center gap-2">
                           <button 
                             onClick={() => {
-                              // TODO: Implement edit functionality
-                              toast.info("Edit functionality coming soon");
+                              toast.info("Advanced edit functionality coming soon");
                             }}
-                            className="text-gray-400 hover:text-green-600 transition-colors"
+                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="Edit Order"
                           >
                             <Edit className="h-4 w-4" />
                           </button>
                           <button 
-                            onClick={() => handleDeleteOrder(order.id)}
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to delete order ${order.orderNumber}?`)) {
+                                handleDeleteOrder(order.id);
+                              }
+                            }}
                             disabled={saving}
-                            className="text-gray-400 hover:text-red-600 disabled:opacity-50 transition-colors"
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 rounded-lg transition-colors"
                             title="Delete Order"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
-                          <button 
-                            className="text-gray-400 hover:text-gray-600"
-                            title="More Actions"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
                         </div>
-                      </td>
-                    </tr>
-                    {expandedOrder === order.id && (
-                      <tr key={`expanded-${order.id}`}>
-                        <td colSpan={8} className="px-6 py-4 bg-gray-50">
-                          <div className="space-y-2">
-                            <h4 className="font-medium text-gray-900">All Products</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                              {order.products.map((product, index) => (
-                                <div key={index} className="bg-white rounded-lg p-3 border border-gray-200">
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <p className="font-medium text-gray-900">{product.name}</p>
-                                      <p className="text-sm text-gray-600">{product.quantity} {product.unit}</p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="font-medium text-gray-900">{formatCurrency(product.totalPrice)}</p>
-                                      <p className="text-sm text-gray-600">{formatCurrency(product.pricePerUnit)}/{product.unit}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
+                      </div>
+
+                      {/* Expanded Details */}
+                      {expandedOrder === order.id && (
+                        <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+                          <div>
+                            <h5 className="text-sm font-semibold text-gray-900 mb-2">📞 Contact Information</h5>
+                            <div className="text-sm text-gray-600 space-y-1 bg-white rounded-lg p-3">
+                              <div><span className="font-medium">Email:</span> {order.clientEmail}</div>
+                              {order.clientPhone && <div><span className="font-medium">Phone:</span> {order.clientPhone}</div>}
                             </div>
-                            {order.notes && (
-                              <div className="mt-4">
-                                <h5 className="font-medium text-gray-900 mb-2">Order Notes</h5>
-                                <p className="text-gray-600 bg-white rounded-lg p-3 border border-gray-200">{order.notes}</p>
+                          </div>
+                          
+                          {order.shippingAddress && (
+                            <div>
+                              <h5 className="text-sm font-semibold text-gray-900 mb-2">🚚 Shipping Address</h5>
+                              <div className="text-sm text-gray-600 bg-white rounded-lg p-3">
+                                <div>{order.shippingAddress.street}</div>
+                                <div>{order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zipCode}</div>
+                                <div>{order.shippingAddress.country}</div>
                               </div>
+                            </div>
+                          )}
+                          
+                          {order.notes && (
+                            <div>
+                              <h5 className="text-sm font-semibold text-gray-900 mb-2">📝 Order Notes</h5>
+                              <p className="text-sm text-gray-600 bg-white rounded-lg p-3 italic">{order.notes}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Orders Table - Enhanced for better comparison */}
+        {viewMode === 'table' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left">
+                      <button
+                        onClick={handleSelectAll}
+                        className="flex items-center justify-center w-5 h-5"
+                        type="button"
+                        aria-label="Select all orders"
+                      >
+                        {selectedOrders.size === filteredOrders.length && filteredOrders.length > 0 ? (
+                          <CheckSquare className="h-5 w-5 text-blue-600" />
+                        ) : selectedOrders.size > 0 ? (
+                          <div className="h-5 w-5 bg-blue-600 rounded border-2 border-blue-600 flex items-center justify-center">
+                            <div className="h-2 w-2 bg-white rounded-sm"></div>
+                          </div>
+                        ) : (
+                          <Square className="h-5 w-5 text-gray-400" />
+                        )}
+                      </button>
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <button
+                        onClick={() => handleSort('orderNumber')}
+                        className="flex items-center gap-1 hover:text-gray-700"
+                      >
+                        Order Details
+                        {sortConfig.key === 'orderNumber' && (
+                          sortConfig.direction === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />
+                        )}
+                      </button>
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <button
+                        onClick={() => handleSort('clientName')}
+                        className="flex items-center gap-1 hover:text-gray-700"
+                      >
+                        Client
+                        {sortConfig.key === 'clientName' && (
+                          sortConfig.direction === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />
+                        )}
+                      </button>
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Products & Calibres
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <button
+                        onClick={() => handleSort('status')}
+                        className="flex items-center gap-1 hover:text-gray-700"
+                      >
+                        Status
+                        {sortConfig.key === 'status' && (
+                          sortConfig.direction === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />
+                        )}
+                      </button>
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <button
+                        onClick={() => handleSort('orderDate')}
+                        className="flex items-center gap-1 hover:text-gray-700"
+                      >
+                        Dates
+                        {sortConfig.key === 'orderDate' && (
+                          sortConfig.direction === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />
+                        )}
+                      </button>
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <button
+                        onClick={() => handleSort('totalAmount')}
+                        className="flex items-center gap-1 hover:text-gray-700"
+                      >
+                        Amount
+                        {sortConfig.key === 'totalAmount' && (
+                          sortConfig.direction === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />
+                        )}
+                      </button>
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredOrders.map((order) => (
+                    <React.Fragment key={`fragment-${order.id}`}>
+                      <tr className={`hover:bg-gray-50 transition-colors ${selectedOrders.has(order.id) ? 'bg-blue-50' : ''}`}>
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={() => handleSelectOrder(order.id)}
+                            className="flex items-center justify-center w-5 h-5"
+                            type="button"
+                            aria-label={`Select order ${order.orderNumber}`}
+                          >
+                            {selectedOrders.has(order.id) ? (
+                              <CheckSquare className="h-5 w-5 text-blue-600" />
+                            ) : (
+                              <Square className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-gray-900">{order.orderNumber}</span>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(order.priority)}`}>
+                                {order.priority.toUpperCase()}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-gray-900">{order.clientName}</span>
+                            <span className="text-sm text-gray-500">{order.clientEmail}</span>
+                            {order.clientPhone && (
+                              <span className="text-sm text-gray-500">{order.clientPhone}</span>
                             )}
                           </div>
                         </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col space-y-2">
+                            {order.products.slice(0, 2).map((product, index) => (
+                              <div key={index} className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  value={product.quantity}
+                                  onChange={async (e) => {
+                                    const newQuantity = parseInt(e.target.value) || 1;
+                                    const updatedProducts = [...order.products];
+                                    updatedProducts[index] = {
+                                      ...product,
+                                      quantity: newQuantity,
+                                      totalPrice: newQuantity * product.pricePerUnit
+                                    };
+                                    const newTotal = updatedProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+                                    
+                                    try {
+                                      await updateClientOrder(order.id, {
+                                        products: updatedProducts,
+                                        totalAmount: newTotal
+                                      });
+                                      
+                                      // Send automatic notification about calibre change
+                                      await addCommunicationNotification(
+                                        `Product calibre updated in order ${order.orderNumber}: ${product.name} quantity changed to ${newQuantity} ${product.unit}`
+                                      );
+                                      
+                                      toast.success('Product calibre updated successfully');
+                                    } catch (error) {
+                                      console.error('Error updating product:', error);
+                                      toast.error('Failed to update product calibre');
+                                    }
+                                  }}
+                                  className="w-16 px-1 py-0.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                                  min="1"
+                                />
+                                <span className="text-sm text-gray-600">
+                                  {product.unit} {product.name}
+                                </span>
+                              </div>
+                            ))}
+                            {order.products.length > 2 && (
+                              <button
+                                onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
+                                className="text-sm text-blue-600 hover:text-blue-800 text-left"
+                              >
+                                +{order.products.length - 2} more items
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(order.status)}
+                            <select
+                              value={order.status}
+                              onChange={async (e) => {
+                                await handleUpdateOrderStatus(order.id, e.target.value as ClientOrder['status']);
+                                // Send automatic notification about status change
+                                if (order.clientEmail) {
+                                  try {
+                                    await addCommunicationNotification(
+                                      `Order ${order.orderNumber} status updated to ${e.target.value} for client ${order.clientName}`
+                                    );
+                                  } catch (error) {
+                                    console.error('Error adding notification:', error);
+                                  }
+                                }
+                              }}
+                              className={`text-xs font-medium border-0 rounded-full px-2.5 py-0.5 ${getStatusColor(order.status)} focus:ring-2 focus:ring-blue-500`}
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="processing">Processing</option>
+                              <option value="shipped">Shipped</option>
+                              <option value="delivered">Delivered</option>
+                              <option value="cancelled">Cancelled</option>
+                            </select>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col text-sm text-gray-600">
+                            <span>Ordered: {formatDate(order.orderDate)}</span>
+                            <span>Expected: {formatDate(order.requestedDeliveryDate)}</span>
+                            {order.actualDeliveryDate && (
+                              <span className="text-green-600">Delivered: {formatDate(order.actualDeliveryDate)}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm">
+                            <div className="font-medium text-gray-900">{formatCurrency(order.totalAmount)}</div>
+                            <div className="text-gray-500">{order.products.length} item{order.products.length !== 1 ? 's' : ''}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button 
+                              onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
+                              className="text-gray-400 hover:text-blue-600 transition-colors"
+                              title="View Details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <button 
+                              onClick={() => {
+                                // TODO: Implement edit functionality
+                                toast.info("Edit functionality coming soon");
+                              }}
+                              className="text-gray-400 hover:text-green-600 transition-colors"
+                              title="Edit Order"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteOrder(order.id)}
+                              disabled={saving}
+                              className="text-gray-400 hover:text-red-600 disabled:opacity-50 transition-colors"
+                              title="Delete Order"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                            <button 
+                              className="text-gray-400 hover:text-gray-600"
+                              title="More Actions"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
-                    )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {filteredOrders.length === 0 && (
-            <div className="text-center py-12">
-              <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No orders found</h3>
-              <p className="text-gray-600">Try adjusting your search or filter criteria</p>
+                      {expandedOrder === order.id && (
+                        <tr key={`expanded-${order.id}`}>
+                          <td colSpan={8} className="px-6 py-4 bg-gray-50">
+                            <div className="space-y-2">
+                              <h4 className="font-medium text-gray-900">All Products</h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {order.products.map((product, index) => (
+                                  <div key={index} className="bg-white rounded-lg p-3 border border-gray-200">
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <p className="font-medium text-gray-900">{product.name}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                          <input
+                                            type="number"
+                                            value={product.quantity}
+                                            onChange={async (e) => {
+                                              const newQuantity = parseInt(e.target.value) || 1;
+                                              const updatedProducts = [...order.products];
+                                              updatedProducts[index] = {
+                                                ...product,
+                                                quantity: newQuantity,
+                                                totalPrice: newQuantity * product.pricePerUnit
+                                              };
+                                              const newTotal = updatedProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+                                              
+                                              try {
+                                                await updateClientOrder(order.id, {
+                                                  products: updatedProducts,
+                                                  totalAmount: newTotal
+                                                });
+                                                
+                                                // Send automatic notification about calibre change
+                                                await addCommunicationNotification(
+                                                  `Product calibre updated in order ${order.orderNumber}: ${product.name} quantity changed to ${newQuantity} ${product.unit}`
+                                                );
+                                                
+                                                toast.success('Product calibre updated successfully');
+                                              } catch (error) {
+                                                console.error('Error updating product:', error);
+                                                toast.error('Failed to update product calibre');
+                                              }
+                                            }}
+                                            className="w-16 px-1 py-0.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                                            min="1"
+                                          />
+                                          <span className="text-sm text-gray-600">{product.unit}</span>
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="font-medium text-gray-900">{formatCurrency(product.totalPrice)}</p>
+                                        <p className="text-sm text-gray-600">{formatCurrency(product.pricePerUnit)}/{product.unit}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              {order.notes && (
+                                <div className="mt-4">
+                                  <h5 className="font-medium text-gray-900 mb-2">Order Notes</h5>
+                                  <p className="text-gray-600 bg-white rounded-lg p-3 border border-gray-200">{order.notes}</p>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
+            
+            {filteredOrders.length === 0 && (
+              <div className="text-center py-12">
+                <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No orders found</h3>
+                <p className="text-gray-600">Try adjusting your search or filter criteria</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       
       {/* New Order Modal */}

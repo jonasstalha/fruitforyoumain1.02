@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, Bell, Search, Filter, Send, Users, Loader2, Database } from 'lucide-react';
+import { MessageCircle, Bell, Search, Filter, Send, Users, Loader2, Database, CheckSquare } from 'lucide-react';
 import { useAuth } from '@/components/auth-provider';
 import { 
   getAllMessages, 
@@ -457,39 +457,89 @@ export default function CommunicationDashboard() {
                     {filteredMessages.map((message) => (
                       <div
                         key={message.id}
-                        className={getMessageClassName(message)}
+                        className={`${getMessageClassName(message)} cursor-pointer transition-all duration-200 hover:shadow-md`}
                         onClick={() => !message.read && markMessageRead(message.id)}
-                        style={{ cursor: message.read ? 'default' : 'pointer' }}
                       >
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{message.sender}</h3>
-                            {message.recipientEmail && (
-                              <p className="text-xs text-gray-500">
-                                To: {message.recipientName || message.recipientEmail}
-                              </p>
-                            )}
-                            {!message.recipientEmail && (
-                              <p className="text-xs text-blue-600">Broadcast message</p>
-                            )}
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex items-start gap-3 flex-1">
+                            {/* Custom Checkbox */}
+                            <div 
+                              className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all duration-200 ${
+                                message.read 
+                                  ? 'bg-green-500 border-green-500 text-white' 
+                                  : 'border-gray-300 hover:border-blue-500 bg-white'
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!message.read) {
+                                  markMessageRead(message.id);
+                                }
+                              }}
+                            >
+                              {message.read && <CheckSquare className="h-3 w-3" />}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-semibold text-gray-900">{message.sender}</h3>
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  message.priority === 'high' ? 'bg-red-100 text-red-800' :
+                                  message.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-green-100 text-green-800'
+                                }`}>
+                                  {message.priority.toUpperCase()}
+                                </span>
+                              </div>
+                              {message.recipientEmail && (
+                                <p className="text-xs text-gray-500 mb-1">
+                                  To: {message.recipientName || message.recipientEmail}
+                                </p>
+                              )}
+                              {!message.recipientEmail && (
+                                <p className="text-xs text-blue-600 mb-1 font-medium">📢 Broadcast message</p>
+                              )}
+                              <p className="text-gray-600 text-sm leading-relaxed">{message.content}</p>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-500">
-                              {message.timestamp.toLocaleTimeString()}
+                          <div className="flex items-center gap-2 ml-4">
+                            <span className="text-xs text-gray-500 whitespace-nowrap">
+                              {message.timestamp.toLocaleString()}
                             </span>
                             {!message.read && (
-                              <span className="text-xs text-blue-500">●</span>
+                              <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
                             )}
-                            <button
-                              className="text-xs text-red-500 hover:underline"
-                              onClick={e => { e.stopPropagation(); deleteMessage(message.id); }}
-                              title="Delete"
-                            >
-                              Delete
-                            </button>
                           </div>
                         </div>
-                        <p className="text-gray-600">{message.content}</p>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                          <div className="flex items-center gap-2">
+                            {!message.read && (
+                              <button
+                                className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                                onClick={e => { 
+                                  e.stopPropagation(); 
+                                  markMessageRead(message.id); 
+                                }}
+                              >
+                                Mark as Read
+                              </button>
+                            )}
+                            {message.read && (
+                              <span className="text-xs text-green-600 font-medium">✓ Read</span>
+                            )}
+                          </div>
+                          <button
+                            className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+                            onClick={e => { 
+                              e.stopPropagation(); 
+                              if (confirm('Are you sure you want to delete this message?')) {
+                                deleteMessage(message.id); 
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -533,29 +583,83 @@ export default function CommunicationDashboard() {
                     {notifications.map((notification) => (
                       <div
                         key={notification.id}
-                        className={`p-4 rounded-lg border ${notification.read ? 'bg-white' : 'bg-yellow-50 border-yellow-200'}`}
+                        className={`p-4 rounded-lg border transition-all duration-200 hover:shadow-md cursor-pointer ${
+                          notification.read 
+                            ? 'bg-white border-gray-200' 
+                            : 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100'
+                        }`}
                         onClick={() => !notification.read && markNotificationRead(notification.id)}
-                        style={{ cursor: notification.read ? 'default' : 'pointer' }}
                       >
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-gray-900 font-medium">Notification</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-500">
-                              {notification.timestamp.toLocaleTimeString()}
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex items-start gap-3 flex-1">
+                            {/* Custom Checkbox for Notifications */}
+                            <div 
+                              className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all duration-200 ${
+                                notification.read 
+                                  ? 'bg-yellow-500 border-yellow-500 text-white' 
+                                  : 'border-gray-300 hover:border-yellow-500 bg-white'
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!notification.read) {
+                                  markNotificationRead(notification.id);
+                                }
+                              }}
+                            >
+                              {notification.read && <CheckSquare className="h-3 w-3" />}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-gray-900 font-medium">📋 System Notification</span>
+                                {!notification.read && (
+                                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                    NEW
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-gray-600 text-sm leading-relaxed">{notification.content}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <span className="text-xs text-gray-500 whitespace-nowrap">
+                              {notification.timestamp.toLocaleString()}
                             </span>
                             {!notification.read && (
-                              <span className="text-xs text-yellow-500">●</span>
+                              <span className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
                             )}
-                            <button
-                              className="text-xs text-red-500 hover:underline"
-                              onClick={e => { e.stopPropagation(); deleteNotification(notification.id); }}
-                              title="Delete"
-                            >
-                              Delete
-                            </button>
                           </div>
                         </div>
-                        <p className="text-gray-600">{notification.content}</p>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                          <div className="flex items-center gap-2">
+                            {!notification.read && (
+                              <button
+                                className="text-xs text-yellow-600 hover:text-yellow-800 font-medium transition-colors"
+                                onClick={e => { 
+                                  e.stopPropagation(); 
+                                  markNotificationRead(notification.id); 
+                                }}
+                              >
+                                Mark as Read
+                              </button>
+                            )}
+                            {notification.read && (
+                              <span className="text-xs text-yellow-600 font-medium">✓ Read</span>
+                            )}
+                          </div>
+                          <button
+                            className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+                            onClick={e => { 
+                              e.stopPropagation(); 
+                              if (confirm('Are you sure you want to delete this notification?')) {
+                                deleteNotification(notification.id); 
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

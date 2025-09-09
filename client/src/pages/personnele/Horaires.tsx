@@ -2,8 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'wouter';
 import { 
   Calendar, 
-  Check, 
-  Filter, 
   Clock,
   Users,
   DollarSign,
@@ -11,14 +9,13 @@ import {
   Search,
   CheckCircle2,
   XCircle,
-  AlertCircle,
   ChevronDown,
   Download,
-  Upload,
   Eye,
   EyeOff,
   History,
-  BarChart3
+  Coffee,
+  Settings
 } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { 
@@ -50,8 +47,10 @@ interface WorkSchedule {
   id?: string;
   employeeId: string;
   date: string;
-  startTime: string;
-  endTime: string;
+  entryTime: string;
+  exitTime: string;
+  pauseDuration: number; // in minutes
+  machineCollapseDuration: number; // in minutes
   hoursWorked: number;
   salary: number;
   status: 'present' | 'absent' | 'late' | 'overtime';
@@ -77,41 +76,9 @@ const Horaires: React.FC = () => {
   
   // UI state
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
-  const [pendingTimes, setPendingTimes] = useState<{[key: string]: {startTime?: string, endTime?: string}}>({});
-  const [timeoutRefs, setTimeoutRefs] = useState<{[key: string]: NodeJS.Timeout}>({});
-
-  // Debounced save function for time inputs
-  const debouncedSaveTime = useCallback((employeeId: string, field: 'startTime' | 'endTime', value: string) => {
-    // Clear existing timeout for this field
-    const key = `${employeeId}-${field}`;
-    if (timeoutRefs[key]) {
-      clearTimeout(timeoutRefs[key]);
-    }
-
-    // Set new timeout
-    const newTimeout = setTimeout(async () => {
-      console.log(`⏱️ Debounced save: ${field} = ${value} for employee ${employeeId}`);
-      await updateScheduleField(employeeId, field, value);
-      
-      // Clear pending time after save
-      setPendingTimes(prev => {
-        const updated = { ...prev };
-        if (updated[employeeId]) {
-          delete updated[employeeId][field];
-          if (Object.keys(updated[employeeId]).length === 0) {
-            delete updated[employeeId];
-          }
-        }
-        return updated;
-      });
-    }, 1000); // 1 second delay
-
-    setTimeoutRefs(prev => ({ ...prev, [key]: newTimeout }));
-  }, [timeoutRefs]);
 
   // Firebase real-time listeners
   useEffect(() => {
-    // Listen to employees
     const unsubscribeEmployees = onSnapshot(
       query(collection(db, 'personnel'), where('status', '==', 'Active')),
       (snapshot) => {
@@ -127,7 +94,6 @@ const Horaires: React.FC = () => {
     return () => unsubscribeEmployees();
   }, []);
 
-  // Listen to schedules for selected date
   useEffect(() => {
     if (!selectedDate) return;
 
@@ -149,25 +115,36 @@ const Horaires: React.FC = () => {
     return () => unsubscribeSchedules();
   }, [selectedDate]);
 
-  // Helper functions
-  const calculateHoursAndSalary = (startTime: string, endTime: string, hourlyRate: number) => {
-    if (!startTime || !endTime) return { hours: 0, salary: 0 };
+  // Improved calculation function
+  const calculateHoursAndSalary = (entryTime: string, exitTime: string, hourlyRate: number, pauseDuration = 0, machineCollapseDuration = 0) => {
+    if (!entryTime || !exitTime) return { hours: 0, salary: 0 };
+
+    const [entryHour, entryMin] = entryTime.split(':').map(Number);
+    const [exitHour, exitMin] = exitTime.split(':').map(Number);
+
+    // Calculate total minutes worked
+    let totalMinutes = (exitHour * 60 + exitMin) - (entryHour * 60 + entryMin);
     
-    const [startHour, startMin] = startTime.split(':').map(Number);
-    const [endHour, endMin] = endTime.split(':').map(Number);
-    
-    let hours = endHour - startHour;
-    let minutes = endMin - startMin;
-    
-    if (minutes < 0) {
-      hours--;
-      minutes += 60;
+    // Handle next day scenarios
+    if (totalMinutes < 0) {
+      totalMinutes += 24 * 60; // Add 24 hours in minutes
     }
+
+    // Subtract pause duration
+    const workMinutes = totalMinutes - pauseDuration;
+    const totalHours = Math.max(0, workMinutes / 60);
+
+    // Calculate salary
+    // Machine collapse hours are paid at half rate
+    const machineCollapseHours = Math.min(machineCollapseDuration / 60, totalHours);
+    const normalHours = totalHours - machineCollapseHours;
     
-    const totalHours = hours + (minutes / 60);
-    const salary = Math.round(totalHours * hourlyRate);
-    
-    return { hours: Number(totalHours.toFixed(2)), salary };
+    const salary = Math.round((normalHours * hourlyRate) + (machineCollapseHours * (hourlyRate / 2)));
+
+    return { 
+      hours: Number(totalHours.toFixed(2)), 
+      salary: Math.max(0, salary)
+    };
   };
 
   const getWorkStatus = (hours: number): 'present' | 'late' | 'overtime' => {
@@ -177,152 +154,80 @@ const Horaires: React.FC = () => {
   };
 
   // Schedule management
-  const saveSchedule = async (employeeId: string, scheduleData: Partial<WorkSchedule>) => {
-    setSaving(true);
-    try {
-      const existingSchedule = schedules.find(s => s.employeeId === employeeId);
-      
-      if (existingSchedule?.id) {
-        // Update existing schedule
-        await updateDoc(doc(db, 'work_schedules', existingSchedule.id), {
-          ...scheduleData,
-          date: selectedDate, // Ensure date is always set
-          updatedAt: serverTimestamp()
-        });
-        console.log(`Updated schedule for employee ${employeeId} on ${selectedDate}`);
-      } else {
-        // Create new schedule
-        const newScheduleData = {
-          employeeId,
-          date: selectedDate,
-          startTime: '',
-          endTime: '',
-          hoursWorked: 0,
-          salary: 0,
-          status: 'absent' as const,
-          notes: '',
-          checked: false,
-          ...scheduleData,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        };
-        
-        await addDoc(collection(db, 'work_schedules'), newScheduleData);
-        console.log(`Created new schedule for employee ${employeeId} on ${selectedDate}`);
-      }
-    } catch (error) {
-      console.error('Error saving schedule:', error);
-      alert('Error saving schedule. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const updateScheduleField = async (employeeId: string, field: keyof WorkSchedule, value: any) => {
-    console.log(`🔄 Updating ${field} for employee ${employeeId} with value: ${value}`);
-    
     const employee = employees.find(e => e.id === employeeId);
-    if (!employee) {
-      console.error('❌ Employee not found:', employeeId);
-      alert('Employee not found!');
-      return;
-    }
+    if (!employee) return;
 
-    // Set saving state
     setSaving(true);
 
     try {
       const existingSchedule = schedules.find(s => s.employeeId === employeeId);
-      let updatedSchedule: Partial<WorkSchedule> = {
-        [field]: value
-      };
+      let updatedSchedule: Partial<WorkSchedule> = { [field]: value };
 
-      // Recalculate if time changes
-      if (field === 'startTime' || field === 'endTime') {
-        const startTime = field === 'startTime' ? value : existingSchedule?.startTime || '';
-        const endTime = field === 'endTime' ? value : existingSchedule?.endTime || '';
+      // Recalculate when any time-related field changes
+      if (['entryTime', 'exitTime', 'pauseDuration', 'machineCollapseDuration'].includes(field)) {
+        const entryTime = field === 'entryTime' ? value : existingSchedule?.entryTime || '';
+        const exitTime = field === 'exitTime' ? value : existingSchedule?.exitTime || '';
+        const pauseDuration = field === 'pauseDuration' ? value : existingSchedule?.pauseDuration || 0;
+        const machineCollapseDuration = field === 'machineCollapseDuration' ? value : existingSchedule?.machineCollapseDuration || 0;
         
-        console.log(`⏰ Times: start=${startTime}, end=${endTime}`);
-        
-        if (startTime && endTime) {
-          const { hours, salary } = calculateHoursAndSalary(startTime, endTime, employee.hourlyRate || 15);
+        if (entryTime && exitTime) {
+          const { hours, salary } = calculateHoursAndSalary(
+            entryTime, 
+            exitTime, 
+            employee.hourlyRate || 12, 
+            pauseDuration, 
+            machineCollapseDuration
+          );
+          
           updatedSchedule = {
             ...updatedSchedule,
             hoursWorked: hours,
             salary,
             status: getWorkStatus(hours)
           };
-          
-          console.log(`💰 Calculated: ${hours}h worked, ${salary} MAD salary`);
         }
       }
 
-      await saveSchedule(employeeId, updatedSchedule);
-      console.log(`✅ Successfully saved ${field} for employee ${employeeId}`);
-      
-      // Show success feedback
-      if (field === 'startTime' || field === 'endTime') {
-        console.log(`🎉 ${field} saved successfully!`);
+      if (existingSchedule?.id) {
+        await updateDoc(doc(db, 'work_schedules', existingSchedule.id), {
+          ...updatedSchedule,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        await addDoc(collection(db, 'work_schedules'), {
+          employeeId,
+          date: selectedDate,
+          entryTime: '',
+          exitTime: '',
+          pauseDuration: 0,
+          machineCollapseDuration: 0,
+          hoursWorked: 0,
+          salary: 0,
+          status: 'absent' as const,
+          notes: '',
+          checked: false,
+          ...updatedSchedule,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
       }
-      
     } catch (error) {
-      console.error(`❌ Error saving ${field} for employee ${employeeId}:`, error);
-      alert(`Error saving ${field}. Please try again.`);
+      console.error('Error updating schedule:', error);
+      alert('Error saving data. Please try again.');
     } finally {
       setSaving(false);
-    }
-  };
-
-  // Bulk save all schedules for the day
-  const saveAllSchedules = async () => {
-    setSaving(true);
-    try {
-      const promises = employees.map(async (employee) => {
-        const schedule = schedules.find(s => s.employeeId === employee.id);
-        if (schedule && schedule.startTime && schedule.endTime) {
-          await saveSchedule(employee.id, { checked: true });
-        }
-      });
-      
-      await Promise.all(promises);
-      alert(`Successfully saved schedules for ${selectedDate}`);
-    } catch (error) {
-      console.error('Error saving all schedules:', error);
-      alert('Error saving schedules. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Test function to manually save a schedule
-  const testSaveSchedule = async (employeeId: string) => {
-    console.log('Testing schedule save for employee:', employeeId);
-    try {
-      await saveSchedule(employeeId, {
-        startTime: '08:00',
-        endTime: '17:00',
-        hoursWorked: 9,
-        salary: 135,
-        status: 'overtime',
-        checked: false
-      });
-      console.log('Test save successful');
-      alert('Test save successful!');
-    } catch (error) {
-      console.error('Test save failed:', error);
-      alert('Test save failed: ' + error);
     }
   };
 
   const toggleEmployeeCheck = async (employeeId: string) => {
     const existingSchedule = schedules.find(s => s.employeeId === employeeId);
-    
-    // Ensure start and end times are filled before checking
-    if (!existingSchedule?.startTime || !existingSchedule?.endTime) {
-      alert('Please fill in both start and end times before checking in.');
+
+    if (!existingSchedule?.entryTime || !existingSchedule?.exitTime) {
+      alert('Please fill in entry and exit times before checking in.');
       return;
     }
-    
+
     await updateScheduleField(employeeId, 'checked', !existingSchedule?.checked);
   };
 
@@ -340,7 +245,7 @@ const Horaires: React.FC = () => {
       
       if (statusFilter === 'present') matchesStatus = schedule?.checked === true;
       if (statusFilter === 'absent') matchesStatus = schedule?.checked === false || !schedule;
-      if (statusFilter === 'pending') matchesStatus = !schedule?.checked && !!schedule?.startTime;
+      if (statusFilter === 'pending') matchesStatus = !schedule?.checked && !!schedule?.entryTime;
       
       const matchesCheckedFilter = !showCheckedOnly || schedule?.checked;
       
@@ -367,44 +272,26 @@ const Horaires: React.FC = () => {
 
   const departments = Array.from(new Set(employees.map(e => e.department)));
 
+  // Format time for display
+  const formatTime = (time: string) => {
+    if (!time) return '--:--';
+    return time;
+  };
+
+  // Calculate total working time display
+  const getWorkingTimeDisplay = (schedule: WorkSchedule) => {
+    if (!schedule.entryTime || !schedule.exitTime) return '';
+    
+    const pauseDisplay = schedule.pauseDuration > 0 ? ` (Pause: ${schedule.pauseDuration}min)` : '';
+    const machineDisplay = schedule.machineCollapseDuration > 0 ? ` (Machine: ${Math.round(schedule.machineCollapseDuration)}min@50%)` : '';
+    
+    return `${formatTime(schedule.entryTime)} - ${formatTime(schedule.exitTime)}${pauseDisplay}${machineDisplay}`;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Debug Panel (Development only) */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 mb-6">
-            <h3 className="font-semibold text-yellow-800 mb-2">🔧 Debug Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div>
-                <strong>Firebase Connection:</strong><br/>
-                Employees loaded: {employees.length}<br/>
-                Schedules loaded: {schedules.length}<br/>
-                Selected date: {selectedDate}
-              </div>
-              <div>
-                <strong>UI State:</strong><br/>
-                Loading: {loading ? 'Yes' : 'No'}<br/>
-                Saving: {saving ? 'Yes' : 'No'}<br/>
-                Search term: "{searchTerm}"
-              </div>
-              <div>
-                <strong>Filters:</strong><br/>
-                Department: {departmentFilter || 'All'}<br/>
-                Status: {statusFilter}<br/>
-                Show checked only: {showCheckedOnly ? 'Yes' : 'No'}
-              </div>
-            </div>
-            <div className="mt-3 p-2 bg-white rounded border">
-              <strong>Recent Schedules:</strong><br/>
-              {schedules.slice(0, 3).map(s => (
-                <div key={s.id} className="text-xs">
-                  Employee: {s.employeeId.substring(0, 8)}... | Start: {s.startTime || 'None'} | End: {s.endTime || 'None'}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
+        
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
           <div className="flex items-center justify-between mb-6">
@@ -413,27 +300,28 @@ const Horaires: React.FC = () => {
                 <Clock className="text-white w-8 h-8" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-gray-800">Work Schedules</h1>
-                <p className="text-gray-600">Employee time tracking and attendance management</p>
+                <h1 className="text-3xl font-bold text-gray-800">Pointage des Employés</h1>
+                <p className="text-gray-600">Gestion du temps et présence</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-500">Today</p>
-              <p className="text-2xl font-bold text-blue-600">{new Date().toLocaleDateString()}</p>
+            <div className="flex items-center space-x-4">
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Aujourd'hui</p>
+                <p className="text-2xl font-bold text-blue-600">{new Date().toLocaleDateString('fr-FR')}</p>
+              </div>
+              <Link href="/work-hours-history">
+                <button className="flex items-center space-x-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-semibold transition-colors">
+                  <History className="w-5 h-5" />
+                  <span>Historique</span>
+                </button>
+              </Link>
             </div>
-            <Link href="/work-hours-history">
-              <button className="flex items-center space-x-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-semibold transition-colors">
-                <History className="w-5 h-5" />
-                <span>View Work History</span>
-              </button>
-            </Link>
           </div>
 
           {/* Controls Row */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
-            {/* Date Picker */}
             <div className="lg:col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Work Date</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Date de travail</label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
@@ -445,14 +333,13 @@ const Horaires: React.FC = () => {
               </div>
             </div>
 
-            {/* Search */}
             <div className="lg:col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Search Employees</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Rechercher</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
                   type="text"
-                  placeholder="Name or position..."
+                  placeholder="Nom ou poste..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -460,100 +347,75 @@ const Horaires: React.FC = () => {
               </div>
             </div>
 
-            {/* Department Filter */}
             <div className="lg:col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Department</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Département</label>
               <select
                 value={departmentFilter}
                 onChange={(e) => setDepartmentFilter(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="">All Departments</option>
+                <option value="">Tous les départements</option>
                 {departments.map(dept => (
                   <option key={dept} value={dept}>{dept}</option>
                 ))}
               </select>
             </div>
 
-            {/* Status Filter */}
             <div className="lg:col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Statut</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="all">All Status</option>
-                <option value="present">Present</option>
-                <option value="absent">Absent</option>
-                <option value="pending">Pending</option>
+                <option value="all">Tous les statuts</option>
+                <option value="present">Présents</option>
+                <option value="absent">Absents</option>
+                <option value="pending">En attente</option>
               </select>
             </div>
           </div>
 
-          {/* Toggle Options */}
           <div className="flex flex-wrap gap-4 items-center justify-between">
-            <div className="flex flex-wrap gap-4 items-center">
-              <button
-                onClick={() => setShowCheckedOnly(!showCheckedOnly)}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                  showCheckedOnly 
-                    ? 'bg-blue-100 text-blue-800 border border-blue-300' 
-                    : 'bg-gray-100 text-gray-600 border border-gray-300'
-                }`}
-              >
-                {showCheckedOnly ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                <span className="text-sm">Show Checked Only</span>
-              </button>
-            </div>
+            <button
+              onClick={() => setShowCheckedOnly(!showCheckedOnly)}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
+                showCheckedOnly 
+                  ? 'bg-blue-100 text-blue-800 border border-blue-300' 
+                  : 'bg-gray-100 text-gray-600 border border-gray-300'
+              }`}
+            >
+              {showCheckedOnly ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              <span className="text-sm">Afficher pointés uniquement</span>
+            </button>
             
-            {/* Bulk Actions */}
-            <div className="flex gap-2">
-              <button
-                onClick={saveAllSchedules}
-                disabled={saving || schedules.filter(s => s.startTime && s.endTime && !s.checked).length === 0}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  saving || schedules.filter(s => s.startTime && s.endTime && !s.checked).length === 0
-                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                    : 'bg-green-500 hover:bg-green-600 text-white'
-                }`}
-              >
-                {saving ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                <span className="text-sm">Save All ({schedules.filter(s => s.startTime && s.endTime && !s.checked).length})</span>
-              </button>
-              
-              <button
-                onClick={() => {
-                  const csvData = schedules
-                    .filter(s => s.checked)
-                    .map(s => {
-                      const employee = employees.find(e => e.id === s.employeeId);
-                      return `${employee?.firstName} ${employee?.lastName},${s.date},${s.startTime},${s.endTime},${s.hoursWorked},${s.salary}`;
-                    })
-                    .join('\n');
-                  const header = 'Employee,Date,Start Time,End Time,Hours Worked,Salary (MAD)\n';
-                  const blob = new Blob([header + csvData], { type: 'text/csv' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `work-schedules-${selectedDate}.csv`;
-                  a.click();
-                }}
-                disabled={schedules.filter(s => s.checked).length === 0}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  schedules.filter(s => s.checked).length === 0
-                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-500 hover:bg-blue-600 text-white'
-                }`}
-              >
-                <Download className="w-4 h-4" />
-                <span className="text-sm">Export CSV</span>
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                const csvData = schedules
+                  .filter(s => s.checked)
+                  .map(s => {
+                    const employee = employees.find(e => e.id === s.employeeId);
+                    return `${employee?.firstName} ${employee?.lastName},${s.date},${s.entryTime},${s.exitTime},${s.pauseDuration},${s.machineCollapseDuration},${s.hoursWorked},${s.salary}`;
+                  })
+                  .join('\n');
+                const header = 'Employé,Date,Entrée,Sortie,Pause (min),Machine Arrêtée (min),Heures,Salaire (MAD)\n';
+                const blob = new Blob([header + csvData], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `pointage-${selectedDate}.csv`;
+                a.click();
+              }}
+              disabled={schedules.filter(s => s.checked).length === 0}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-semibold transition-colors ${
+                schedules.filter(s => s.checked).length === 0
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-500 hover:bg-blue-600 text-white'
+              }`}
+            >
+              <Download className="w-4 h-4" />
+              <span className="text-sm">Exporter CSV</span>
+            </button>
           </div>
         </div>
 
@@ -563,9 +425,9 @@ const Horaires: React.FC = () => {
             <div className="flex items-center">
               <CheckCircle2 className="w-8 h-8 text-green-500" />
               <div className="ml-4">
-                <h3 className="text-lg font-semibold text-gray-800">Present</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Présents</h3>
                 <p className="text-3xl font-bold text-green-600">{stats.presentEmployees}</p>
-                <p className="text-sm text-gray-500">of {stats.totalEmployees} employees</p>
+                <p className="text-sm text-gray-500">sur {stats.totalEmployees} employés</p>
               </div>
             </div>
           </div>
@@ -574,9 +436,9 @@ const Horaires: React.FC = () => {
             <div className="flex items-center">
               <XCircle className="w-8 h-8 text-red-500" />
               <div className="ml-4">
-                <h3 className="text-lg font-semibold text-gray-800">Absent</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Absents</h3>
                 <p className="text-3xl font-bold text-red-600">{stats.absentEmployees}</p>
-                <p className="text-sm text-gray-500">not checked in</p>
+                <p className="text-sm text-gray-500">non pointés</p>
               </div>
             </div>
           </div>
@@ -585,9 +447,9 @@ const Horaires: React.FC = () => {
             <div className="flex items-center">
               <Clock className="w-8 h-8 text-blue-500" />
               <div className="ml-4">
-                <h3 className="text-lg font-semibold text-gray-800">Total Hours</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Heures Total</h3>
                 <p className="text-3xl font-bold text-blue-600">{stats.totalHours}</p>
-                <p className="text-sm text-gray-500">hours worked</p>
+                <p className="text-sm text-gray-500">heures travaillées</p>
               </div>
             </div>
           </div>
@@ -596,9 +458,9 @@ const Horaires: React.FC = () => {
             <div className="flex items-center">
               <DollarSign className="w-8 h-8 text-yellow-500" />
               <div className="ml-4">
-                <h3 className="text-lg font-semibold text-gray-800">Total Pay</h3>
+                <h3 className="text-lg font-semibold text-gray-800">Salaire Total</h3>
                 <p className="text-3xl font-bold text-yellow-600">{stats.totalSalary} MAD</p>
-                <p className="text-sm text-gray-500">daily payment</p>
+                <p className="text-sm text-gray-500">paiement journalier</p>
               </div>
             </div>
           </div>
@@ -608,7 +470,7 @@ const Horaires: React.FC = () => {
         {loading ? (
           <div className="flex justify-center items-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <span className="ml-4 text-lg text-gray-600">Loading employees...</span>
+            <span className="ml-4 text-lg text-gray-600">Chargement des employés...</span>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -620,7 +482,7 @@ const Horaires: React.FC = () => {
                 <div key={employee.id} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
                   <div className="p-6">
                     {/* Employee Header */}
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center space-x-4">
                         <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
                           schedule?.checked ? 'bg-green-500' : 'bg-gray-400'
@@ -632,7 +494,7 @@ const Horaires: React.FC = () => {
                             {employee.firstName} {employee.lastName}
                           </h3>
                           <p className="text-sm text-gray-600">{employee.position} • {employee.department}</p>
-                          <p className="text-xs text-gray-500">{employee.hourlyRate || 15} MAD/hour</p>
+                          <p className="text-xs text-gray-500">{employee.hourlyRate || 12} MAD/heure</p>
                         </div>
                       </div>
                       <button
@@ -643,142 +505,100 @@ const Horaires: React.FC = () => {
                       </button>
                     </div>
 
-                    {/* Time Inputs */}
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Start Time
-                          {(schedule?.startTime || pendingTimes[employee.id]?.startTime) && (
-                            <span className="ml-2 text-xs text-green-600">
-                              {pendingTimes[employee.id]?.startTime ? '⏳ Saving...' : '✓ Saved'}
-                            </span>
-                          )}
-                        </label>
-                        <input
-                          type="time"
-                          value={pendingTimes[employee.id]?.startTime ?? schedule?.startTime ?? ''}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            console.log('🕐 Start time input changed:', value);
-                            
-                            // Update pending state immediately for UI feedback
-                            setPendingTimes(prev => ({
-                              ...prev,
-                              [employee.id]: {
-                                ...prev[employee.id],
-                                startTime: value
-                              }
-                            }));
-                            
-                            // Debounced save to Firebase
-                            if (value) {
-                              debouncedSaveTime(employee.id, 'startTime', value);
-                            }
-                          }}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                            (schedule?.startTime || pendingTimes[employee.id]?.startTime)
-                              ? 'border-green-300 bg-green-50' 
-                              : 'border-gray-300'
-                          }`}
-                          placeholder="--:--"
-                        />
-                        {(schedule?.startTime || pendingTimes[employee.id]?.startTime) && (
-                          <p className="text-xs text-green-600 mt-1">
-                            Start time: {pendingTimes[employee.id]?.startTime || schedule?.startTime}
-                          </p>
-                        )}
+                    {/* Main Time Inputs - Simplified Layout */}
+                    <div className="space-y-4 mb-6">
+                      {/* Entry and Exit Times */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Heure d'entrée
+                          </label>
+                          <input
+                            type="time"
+                            value={schedule?.entryTime || ''}
+                            onChange={(e) => updateScheduleField(employee.id, 'entryTime', e.target.value)}
+                            className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                            placeholder="--:--"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Heure de sortie
+                          </label>
+                          <input
+                            type="time"
+                            value={schedule?.exitTime || ''}
+                            onChange={(e) => updateScheduleField(employee.id, 'exitTime', e.target.value)}
+                            className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                            placeholder="--:--"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          End Time
-                          {(schedule?.endTime || pendingTimes[employee.id]?.endTime) && (
-                            <span className="ml-2 text-xs text-green-600">
-                              {pendingTimes[employee.id]?.endTime ? '⏳ Saving...' : '✓ Saved'}
-                            </span>
-                          )}
-                        </label>
-                        <input
-                          type="time"
-                          value={pendingTimes[employee.id]?.endTime ?? schedule?.endTime ?? ''}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            console.log('🕐 End time input changed:', value);
-                            
-                            // Update pending state immediately for UI feedback
-                            setPendingTimes(prev => ({
-                              ...prev,
-                              [employee.id]: {
-                                ...prev[employee.id],
-                                endTime: value
-                              }
-                            }));
-                            
-                            // Debounced save to Firebase
-                            if (value) {
-                              debouncedSaveTime(employee.id, 'endTime', value);
-                            }
-                          }}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                            (schedule?.endTime || pendingTimes[employee.id]?.endTime)
-                              ? 'border-green-300 bg-green-50' 
-                              : 'border-gray-300'
-                          }`}
-                          placeholder="--:--"
-                        />
-                        {(schedule?.endTime || pendingTimes[employee.id]?.endTime) && (
-                          <p className="text-xs text-green-600 mt-1">
-                            End time: {pendingTimes[employee.id]?.endTime || schedule?.endTime}
-                          </p>
-                        )}
+
+                      {/* Pause and Machine Collapse */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                            <Coffee className="w-4 h-4 mr-1" />
+                            Durée pause (minutes)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="5"
+                            value={schedule?.pauseDuration || ''}
+                            onChange={(e) => updateScheduleField(employee.id, 'pauseDuration', Number(e.target.value) || 0)}
+                            className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                            <Settings className="w-4 h-4 mr-1" />
+                            Machine arrêtée (minutes)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="5"
+                            value={schedule?.machineCollapseDuration || ''}
+                            onChange={(e) => updateScheduleField(employee.id, 'machineCollapseDuration', Number(e.target.value) || 0)}
+                            className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                            placeholder="0"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Payé à 50%</p>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Debug Information */}
-                    {process.env.NODE_ENV === 'development' && (
-                      <div className="bg-gray-100 p-2 rounded text-xs mb-4">
-                        <strong>Debug Info:</strong><br/>
-                        Employee ID: {employee.id}<br/>
-                        Schedule ID: {schedule?.id || 'Not created yet'}<br/>
-                        Start Time: {schedule?.startTime || 'Not set'}<br/>
-                        End Time: {schedule?.endTime || 'Not set'}<br/>
-                        Hours: {schedule?.hoursWorked || 0}<br/>
-                        Salary: {schedule?.salary || 0} MAD
-                      </div>
-                    )}
-
-                    {/* Auto-save notification */}
-                    {schedule?.startTime && schedule?.endTime && (
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-                        <div className="flex items-center space-x-2">
-                          <CheckCircle2 className="w-4 h-4 text-green-600" />
-                          <span className="text-sm text-green-800 font-medium">
-                            Work hours automatically saved for {selectedDate}
-                          </span>
-                        </div>
-                        <div className="text-xs text-green-600 mt-1">
-                          {schedule.startTime} - {schedule.endTime} ({schedule.hoursWorked}h worked, {schedule.salary} MAD)
+                    {/* Work Summary Display */}
+                    {schedule?.entryTime && schedule?.exitTime && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-sm text-gray-600">Temps de travail:</p>
+                            <p className="font-semibold text-gray-800">{getWorkingTimeDisplay(schedule)}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600">Total:</p>
+                            <div className="flex items-center space-x-4">
+                              <span className="font-semibold text-blue-600">{schedule.hoursWorked}h</span>
+                              <span className="font-bold text-green-600">{schedule.salary} MAD</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
 
-                    {/* Status and Summary */}
+                    {/* Status Badge */}
                     <div className="flex items-center justify-between mb-4">
-                      <div className="flex flex-col space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <Clock className="w-4 h-4 text-gray-500" />
-                          <span className="text-sm text-gray-600">
-                            {schedule?.hoursWorked ? `${schedule.hoursWorked}h worked` : 'No time logged'}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <DollarSign className="w-4 h-4 text-green-500" />
-                          <span className="text-sm font-semibold text-green-600">
-                            {schedule?.salary || 0} MAD
-                          </span>
-                        </div>
+                      <div className="flex items-center space-x-2">
+                        <Clock className="w-4 h-4 text-gray-500" />
+                        <span className="text-sm text-gray-600">
+                          {schedule?.hoursWorked ? `${schedule.hoursWorked}h travaillées` : 'Pas de temps enregistré'}
+                        </span>
                       </div>
                       
-                      {/* Status Badge */}
                       {schedule?.status && (
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                           schedule.status === 'present' ? 'bg-green-100 text-green-800' :
@@ -786,12 +606,14 @@ const Horaires: React.FC = () => {
                           schedule.status === 'overtime' ? 'bg-blue-100 text-blue-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
-                          {schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1)}
+                          {schedule.status === 'present' ? 'Présent' :
+                           schedule.status === 'late' ? 'Retard' :
+                           schedule.status === 'overtime' ? 'Heures sup.' : schedule.status}
                         </span>
                       )}
                     </div>
 
-                    {/* Expanded Content */}
+                    {/* Expanded Content - Notes */}
                     {isExpanded && (
                       <div className="border-t pt-4 mt-4">
                         <div className="mb-4">
@@ -799,7 +621,7 @@ const Horaires: React.FC = () => {
                           <textarea
                             value={schedule?.notes || ''}
                             onChange={(e) => updateScheduleField(employee.id, 'notes', e.target.value)}
-                            placeholder="Add notes about this work day..."
+                            placeholder="Ajouter des notes sur cette journée de travail..."
                             rows={3}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
@@ -807,46 +629,33 @@ const Horaires: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Action Button */}
-                    <div className="space-y-2">
-                      {/* Test Button (Development only) */}
-                      {process.env.NODE_ENV === 'development' && (
-                        <button
-                          onClick={() => testSaveSchedule(employee.id)}
-                          className="w-full py-2 px-4 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold transition-colors text-sm"
-                        >
-                          🧪 Test Save (Dev Only)
-                        </button>
+                    {/* Check In Button */}
+                    <button
+                      onClick={() => toggleEmployeeCheck(employee.id)}
+                      disabled={!schedule?.entryTime || !schedule?.exitTime || saving}
+                      className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center space-x-2 ${
+                        schedule?.checked
+                          ? 'bg-green-500 hover:bg-green-600 text-white'
+                          : schedule?.entryTime && schedule?.exitTime
+                          ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                          : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {saving ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      ) : (
+                        <>
+                          {schedule?.checked ? (
+                            <CheckCircle2 className="w-5 h-5" />
+                          ) : (
+                            <Save className="w-5 h-5" />
+                          )}
+                          <span>
+                            {schedule?.checked ? 'Pointé' : 'Pointer'}
+                          </span>
+                        </>
                       )}
-                      
-                      {/* Main Check In Button */}
-                      <button
-                        onClick={() => toggleEmployeeCheck(employee.id)}
-                        disabled={saving || !schedule?.startTime || !schedule?.endTime}
-                        className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center space-x-2 ${
-                          schedule?.checked
-                            ? 'bg-green-500 hover:bg-green-600 text-white'
-                            : schedule?.startTime && schedule?.endTime
-                            ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                            : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                        }`}
-                      >
-                        {saving ? (
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        ) : (
-                          <>
-                            {schedule?.checked ? (
-                              <CheckCircle2 className="w-5 h-5" />
-                            ) : (
-                              <Save className="w-5 h-5" />
-                            )}
-                            <span>
-                              {schedule?.checked ? 'Checked In' : 'Check In'}
-                            </span>
-                          </>
-                        )}
-                      </button>
-                    </div>
+                    </button>
                   </div>
                 </div>
               );
@@ -857,39 +666,39 @@ const Horaires: React.FC = () => {
         {filteredEmployees.length === 0 && !loading && (
           <div className="text-center py-12">
             <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-600 mb-2">No employees found</h3>
-            <p className="text-gray-500">Try adjusting your search or filter criteria</p>
+            <h3 className="text-xl font-semibold text-gray-600 mb-2">Aucun employé trouvé</h3>
+            <p className="text-gray-500">Essayez d'ajuster vos critères de recherche ou de filtre</p>
           </div>
         )}
 
         {/* Daily Summary Report */}
         {schedules.length > 0 && (
           <div className="mt-8 bg-white rounded-2xl shadow-xl p-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">Daily Work Summary - {selectedDate}</h2>
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">Résumé Journalier - {new Date(selectedDate).toLocaleDateString('fr-FR')}</h2>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Attendance Summary */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">Attendance Overview</h3>
+                <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">Aperçu de la Présence</h3>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Total Employees:</span>
+                    <span className="text-gray-600">Total Employés:</span>
                     <span className="font-semibold text-gray-800">{stats.totalEmployees}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Present Today:</span>
+                    <span className="text-gray-600">Présents Aujourd'hui:</span>
                     <span className="font-semibold text-green-600">{stats.presentEmployees}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Absent Today:</span>
+                    <span className="text-gray-600">Absents Aujourd'hui:</span>
                     <span className="font-semibold text-red-600">{stats.absentEmployees}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Overtime Workers:</span>
+                    <span className="text-gray-600">Heures Supplémentaires:</span>
                     <span className="font-semibold text-blue-600">{stats.overtimeEmployees}</span>
                   </div>
                   <div className="flex justify-between items-center border-t pt-2">
-                    <span className="text-gray-600">Attendance Rate:</span>
+                    <span className="text-gray-600">Taux de Présence:</span>
                     <span className="font-semibold text-purple-600">
                       {stats.totalEmployees > 0 ? Math.round((stats.presentEmployees / stats.totalEmployees) * 100) : 0}%
                     </span>
@@ -899,30 +708,30 @@ const Horaires: React.FC = () => {
 
               {/* Financial Summary */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">Financial Summary</h3>
+                <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">Résumé Financier</h3>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Total Hours Worked:</span>
+                    <span className="text-gray-600">Heures Totales Travaillées:</span>
                     <span className="font-semibold text-gray-800">{stats.totalHours}h</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Regular Hours:</span>
+                    <span className="text-gray-600">Heures Régulières:</span>
                     <span className="font-semibold text-blue-600">
                       {schedules.filter(s => s.checked && (s.hoursWorked || 0) <= 8).reduce((sum, s) => sum + (s.hoursWorked || 0), 0).toFixed(2)}h
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Overtime Hours:</span>
+                    <span className="text-gray-600">Heures Supplémentaires:</span>
                     <span className="font-semibold text-orange-600">
                       {schedules.filter(s => s.checked && (s.hoursWorked || 0) > 8).reduce((sum, s) => sum + Math.max(0, (s.hoursWorked || 0) - 8), 0).toFixed(2)}h
                     </span>
                   </div>
                   <div className="flex justify-between items-center border-t pt-2">
-                    <span className="text-gray-600 font-medium">Total Daily Pay:</span>
+                    <span className="text-gray-600 font-medium">Salaire Total Journalier:</span>
                     <span className="font-bold text-green-600 text-lg">{stats.totalSalary} MAD</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Average Pay/Employee:</span>
+                    <span className="text-gray-600">Salaire Moyen/Employé:</span>
                     <span className="font-semibold text-gray-800">
                       {stats.presentEmployees > 0 ? Math.round(stats.totalSalary / stats.presentEmployees) : 0} MAD
                     </span>
@@ -934,18 +743,20 @@ const Horaires: React.FC = () => {
             {/* Individual Employee Details */}
             {schedules.filter(s => s.checked).length > 0 && (
               <div className="mt-6">
-                <h3 className="text-lg font-semibold text-gray-700 border-b pb-2 mb-4">Employee Work Details</h3>
+                <h3 className="text-lg font-semibold text-gray-700 border-b pb-2 mb-4">Détails du Travail des Employés</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="text-left p-3 font-semibold text-gray-700">Employee</th>
-                        <th className="text-left p-3 font-semibold text-gray-700">Department</th>
-                        <th className="text-left p-3 font-semibold text-gray-700">Start Time</th>
-                        <th className="text-left p-3 font-semibold text-gray-700">End Time</th>
-                        <th className="text-left p-3 font-semibold text-gray-700">Hours</th>
-                        <th className="text-left p-3 font-semibold text-gray-700">Status</th>
-                        <th className="text-right p-3 font-semibold text-gray-700">Pay (MAD)</th>
+                        <th className="text-left p-3 font-semibold text-gray-700">Employé</th>
+                        <th className="text-left p-3 font-semibold text-gray-700">Département</th>
+                        <th className="text-left p-3 font-semibold text-gray-700">Entrée</th>
+                        <th className="text-left p-3 font-semibold text-gray-700">Sortie</th>
+                        <th className="text-left p-3 font-semibold text-gray-700">Pause</th>
+                        <th className="text-left p-3 font-semibold text-gray-700">Machine</th>
+                        <th className="text-left p-3 font-semibold text-gray-700">Heures</th>
+                        <th className="text-left p-3 font-semibold text-gray-700">Statut</th>
+                        <th className="text-right p-3 font-semibold text-gray-700">Salaire (MAD)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -957,8 +768,10 @@ const Horaires: React.FC = () => {
                             <tr key={schedule.id} className="border-b hover:bg-gray-50">
                               <td className="p-3 font-medium">{employee?.firstName} {employee?.lastName}</td>
                               <td className="p-3 text-gray-600">{employee?.department}</td>
-                              <td className="p-3">{schedule.startTime}</td>
-                              <td className="p-3">{schedule.endTime}</td>
+                              <td className="p-3">{schedule.entryTime}</td>
+                              <td className="p-3">{schedule.exitTime}</td>
+                              <td className="p-3">{schedule.pauseDuration || 0}min</td>
+                              <td className="p-3">{schedule.machineCollapseDuration || 0}min</td>
                               <td className="p-3 font-semibold">{schedule.hoursWorked}h</td>
                               <td className="p-3">
                                 <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
@@ -967,7 +780,9 @@ const Horaires: React.FC = () => {
                                   schedule.status === 'overtime' ? 'bg-blue-100 text-blue-800' :
                                   'bg-gray-100 text-gray-800'
                                 }`}>
-                                  {schedule.status}
+                                  {schedule.status === 'present' ? 'Présent' :
+                                   schedule.status === 'late' ? 'Retard' :
+                                   schedule.status === 'overtime' ? 'H. Sup.' : schedule.status}
                                 </span>
                               </td>
                               <td className="p-3 text-right font-semibold text-green-600">{schedule.salary}</td>
@@ -979,6 +794,17 @@ const Horaires: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Calculation Example Box */}
+            <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <h4 className="font-semibold text-yellow-800 mb-2">Exemple de Calcul:</h4>
+              <p className="text-sm text-yellow-700">
+                Employé travaille 9h-17h (8h) avec 60min pause et 120min machine arrêtée:<br/>
+                • Temps brut: 8h - 1h pause = 7h travaillées<br/>
+                • 2h machine arrêtée (payées 50%): 5h normales + 2h à 50%<br/>
+                • Calcul: (5h × 12 MAD) + (2h × 6 MAD) = 60 + 12 = 72 MAD
+              </p>
+            </div>
           </div>
         )}
       </div>

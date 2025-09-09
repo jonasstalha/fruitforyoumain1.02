@@ -156,6 +156,31 @@ service cloud.firestore {
         && data.delivery.notes is string;
     }
 
+    // ✅ Client Orders collection - accessible to all authenticated users with validation
+    function isValidClientOrder() {
+      let data = request.resource.data;
+      return data.orderNumber is string
+        && data.clientName is string
+        && data.clientEmail is string
+        && data.products is list
+        && data.status is string
+        && (data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled'])
+        && data.orderDate is string
+        && data.requestedDeliveryDate is string
+        && data.totalAmount is number
+        && data.priority is string
+        && (data.priority in ['low', 'medium', 'high'])
+        && data.shippingAddress is map
+        && data.paymentStatus is string;
+    }
+
+    match /client-orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidClientOrder();
+      allow update: if isAuthenticated() && isValidClientOrder();
+      allow delete: if isAuthenticated();
+    }
+
     // ✅ Avocado Orders collection - accessible to all authenticated users
     match /avocado_orders/{orderId} {
       allow read, write: if isAuthenticated();
@@ -417,14 +442,40 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Messages collection for communication dashboard - simplified for development
-    match /messages/{messageId} {
-      allow read, write: if isAuthenticated();
+    // Messages collection for communication dashboard with enhanced validation
+    function isValidMessage() {
+      let data = request.resource.data;
+      return data.senderEmail is string
+        && data.senderName is string
+        && data.content is string
+        && data.priority is string
+        && (data.priority in ['low', 'medium', 'high'])
+        && data.read is bool
+        && data.timestamp is string
+        && data.createdAt is timestamp;
     }
 
-    // Communication Notifications collection - simplified for development
+    match /messages/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMessage();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // Communication Notifications collection with enhanced validation
+    function isValidCommunicationNotification() {
+      let data = request.resource.data;
+      return data.content is string
+        && data.read is bool
+        && data.timestamp is string
+        && data.createdAt is timestamp;
+    }
+
     match /communication-notifications/{notificationId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidCommunicationNotification();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
     }
 
     // Default deny
