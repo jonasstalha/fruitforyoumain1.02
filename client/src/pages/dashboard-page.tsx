@@ -4,15 +4,24 @@ import FilterBar from "@/components/dashboard/filter-bar";
 import LotTable from "@/components/dashboard/lot-table";
 import { Plus, QrCode, Archive, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StatsData, Farm, Lot, FilterState, AvocadoTracking } from "@shared/schema";
+import { StatsData, Farm, Lot, AvocadoTracking } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { api, getFarms } from "@/lib/queryClient";
 import { useLanguage } from "@/contexts/LanguageContext";
+
+// Define FilterState interface
+interface FilterState {
+  search: string;
+  farmId: string;
+  status: string;
+  date: string;
+}
 
 // Constants
 const DEFAULT_FILTERS: FilterState = {
   search: "",
   farmId: "all",
+  status: "all",
   date: "",
 };
 
@@ -35,11 +44,14 @@ export default function DashboardPage() {
   });
   
   // Ensure all required variables are defined
-  const lots: Lot[] = avocadoTrackingData.map((tracking, index) => ({
+  const lots: (Lot & { harvestDate: string; farmName: string; quantity: number })[] = avocadoTrackingData.map((tracking, index) => ({
     id: (index + 1).toString(),
     name: `Lot ${tracking.harvest.lotNumber || index + 1}`,
     description: `Lot from ${tracking.harvest.farmLocation}, variety: ${tracking.harvest.variety}`,
     lotNumber: tracking.harvest.lotNumber,
+    harvestDate: tracking.harvest.harvestDate,
+    farmName: tracking.harvest.farmLocation,
+    quantity: tracking.packaging?.netWeight || 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }));

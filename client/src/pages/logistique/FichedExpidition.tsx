@@ -797,40 +797,49 @@ export default function FichedExpidition() {
       
       localStorage.setItem('archiveBoxes', JSON.stringify(archiveBoxes));
 
-      // Try to save to Firestore if possible, otherwise just use localStorage
+      // Try to save to Firestore with fallback for unauthenticated users
       try {
-        if (!auth.currentUser) {
-          console.log('No authenticated user, skipping Firestore save');
-          // Continue with local storage only
+        const currentUserId = auth.currentUser?.uid || 'USER123'; // Use fallback ID if not authenticated
+        console.log('🔄 Attempting to save to Firebase with user ID:', currentUserId);
+        
+        // Check if expedition already exists in Firestore
+        const expeditionsRef = collection(firestore, 'expeditions');
+        const q = query(expeditionsRef, where('id', '==', newExpeditionId));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          // Update existing document
+          const docId = querySnapshot.docs[0].id;
+          console.log('🔄 Updating existing document with ID:', docId);
+          await updateDoc(firestoreDoc(firestore, 'expeditions', docId), {
+            ...expeditionData,
+            userId: currentUserId,
+            updatedAt: serverTimestamp()
+          });
+          console.log('✅ Updated existing expedition in Firestore');
+          setSuccessMessageText('✅ Fiche d\'expédition mise à jour dans Firebase et localStorage!');
         } else {
-          // Check if expedition already exists in Firestore
-          const expeditionsRef = collection(firestore, 'expeditions');
-          const q = query(expeditionsRef, where('id', '==', newExpeditionId));
-          const querySnapshot = await getDocs(q);
-          
-          if (!querySnapshot.empty) {
-            // Update existing document
-            const docId = querySnapshot.docs[0].id;
-            await updateDoc(firestoreDoc(firestore, 'expeditions', docId), {
-              ...expeditionData,
-              updatedAt: serverTimestamp()
-            });
-            console.log('Updated existing expedition in Firestore');
-          } else {
-            // Create new document
-            await addDoc(expeditionsRef, {
-              ...expeditionData,
-              userId: userId,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            });
-            console.log('Added new expedition to Firestore');
-          }
+          // Create new document
+          console.log('🔄 Creating new document in Firebase...');
+          const docRef = await addDoc(expeditionsRef, {
+            ...expeditionData,
+            userId: currentUserId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+          console.log('✅ Created new expedition in Firestore with doc ID:', docRef.id);
+          setSuccessMessageText('✅ Fiche d\'expédition sauvegardée dans Firebase et localStorage!');
         }
-      } catch (firestoreError) {
-        console.error('Error saving to Firestore:', firestoreError);
-        // Display a user-friendly message
-        setSuccessMessageText('Sauvegardé localement (pas de connexion au serveur)');
+        
+      } catch (firestoreError: any) {
+        console.error('❌ Error saving to Firestore:', firestoreError);
+        console.error('❌ Firebase error details:', {
+          code: firestoreError?.code,
+          message: firestoreError?.message,
+          stack: firestoreError?.stack
+        });
+        // Display a user-friendly message with more details
+        setSuccessMessageText(`⚠️ Sauvegardé localement seulement (Firebase Error: ${firestoreError?.code || firestoreError?.message || 'Unknown error'})`);
         // Continue since we've already saved to localStorage
       }
       

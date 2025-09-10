@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Card,
   CardContent,
@@ -23,13 +23,14 @@ import { Lot, Farm } from "@shared/schema";
 const PAGE_SIZE = 5;
 
 interface LotTableProps {
-  lots: Lot[];
+  lots: (Lot & { harvestDate?: string; farmName?: string; quantity?: number })[];
   isLoading: boolean;
   farms: Farm[];
 }
 
 export default function LotTable({ lots, isLoading, farms }: LotTableProps) {
   const [page, setPage] = useState(1);
+  const [, setLocation] = useLocation();
   
   // Calculate total pages
   const totalPages = Math.ceil(lots.length / PAGE_SIZE);
@@ -37,10 +38,40 @@ export default function LotTable({ lots, isLoading, farms }: LotTableProps) {
   // Get current page data
   const startIndex = (page - 1) * PAGE_SIZE;
   const currentLots = lots.slice(startIndex, startIndex + PAGE_SIZE);
+
+  // Handle automatic redirection to lot detail
+  const handleLotClick = (lot: Lot & { harvestDate?: string; farmName?: string; quantity?: number }) => {
+    const formattedDate = formatDateForUrl(lot.harvestDate || '');
+    setLocation(`/lot-detail/${formattedDate}`);
+  };
   
+  // Format date to YYYYMMDD for URL
+  const formatDateForUrl = (dateString: string) => {
+    if (!dateString) return "00000000";
+    
+    try {
+      // Handle different date formats
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        // If date parsing fails, try to extract numbers
+        const numbersOnly = dateString.replace(/[^0-9]/g, '');
+        return numbersOnly.slice(0, 8).padEnd(8, '0');
+      }
+      
+      // Format as YYYYMMDD
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}${month}${day}`;
+    } catch (error) {
+      console.error("Error formatting date for URL:", error);
+      return "00000000";
+    }
+  };
+
   // Find farm name by id
-  const getFarmName = (farmId: number) => {
-    const farm = farms.find(f => f.id === farmId);
+  const getFarmName = (farmId: string | number) => {
+    const farm = farms.find(f => f.id === String(farmId));
     return farm ? farm.name : "Ferme inconnue";
   };
   
@@ -129,22 +160,27 @@ export default function LotTable({ lots, isLoading, farms }: LotTableProps) {
               </TableRow>
             ) : (
               currentLots.map((lot) => (
-                <TableRow key={lot.id}>
+                <TableRow 
+                  key={lot.id} 
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleLotClick(lot)}
+                >
                   <TableCell className="font-mono">{lot.lotNumber}</TableCell>
-                  <TableCell>{getFarmName(lot.farmId)}</TableCell>
-                  <TableCell>{formatDate(lot.harvestDate)}</TableCell>
-                  <TableCell>{lot.initialQuantity} kg</TableCell>
+                  <TableCell>{lot.farmName || "N/A"}</TableCell>
+                  <TableCell>{formatDate(lot.harvestDate || '')}</TableCell>
+                  <TableCell>{lot.quantity || 0} kg</TableCell>
                   <TableCell className="space-x-2">
                     <Button
                       variant="ghost"
                       size="icon"
                       className="text-blue-500 hover:text-blue-700"
                       title="Voir détails"
-                      asChild
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLotClick(lot);
+                      }}
                     >
-                      <Link href={`/lots/${lot.id}`}>
-                        <Eye className="h-4 w-4" />
-                      </Link>
+                      <Eye className="h-4 w-4" />
                     </Button>
                   </TableCell>
                 </TableRow>

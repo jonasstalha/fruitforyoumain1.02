@@ -131,11 +131,13 @@ export default function LotDetailPage() {
 
       // Decode the URL parameter in case it contains special characters
       const decodedLotNumber = decodeURIComponent(rawLotNumber);
-      const lotNumber = cleanLotNumber(decodedLotNumber);
       console.log('Raw lot number:', rawLotNumber);
       console.log('Decoded lot number:', decodedLotNumber);
-      console.log('Cleaned lot number:', lotNumber);
-      setCurrentLotNumber(lotNumber);
+      
+      // Check if the parameter is a date format (8 digits like 20250610)
+      const isDateFormat = /^\d{8}$/.test(decodedLotNumber);
+      
+      setCurrentLotNumber(decodedLotNumber);
       setIsLoading(true);
       setErrorMessage(null);
 
@@ -145,19 +147,34 @@ export default function LotDetailPage() {
 
       const attemptFetch = async (): Promise<void> => {
         try {
-          console.log(`Attempt ${retryCount + 1} to fetch lot data for:`, lotNumber);
+          console.log(`Attempt ${retryCount + 1} to fetch lot data for:`, decodedLotNumber);
           
           // Use the same method as lots page - fetch all lots and find the specific one
           const { getAvocadoTrackingData } = await import('@/lib/queryClient');
           const lots = await getAvocadoTrackingData()();
           
           if (lots.length > 0) {
-            // Find the lot with matching lot number (case-insensitive)
-            const foundLot = lots.find((lot: any) => 
-              lot.harvest?.lotNumber?.toLowerCase() === lotNumber.toLowerCase() ||
-              lot.harvest?.lotNumber?.toLowerCase() === decodedLotNumber.toLowerCase() ||
-              lot.harvest?.lotNumber?.toLowerCase() === rawLotNumber.toLowerCase()
-            );
+            let foundLot;
+            
+            if (isDateFormat) {
+              // Search by harvest date format YYYYMMDD
+              foundLot = lots.find((lot: any) => {
+                const harvestDate = lot.harvest?.harvestDate;
+                if (harvestDate) {
+                  const dateOnly = harvestDate.replace(/[^0-9]/g, '').slice(0, 8);
+                  return dateOnly === decodedLotNumber;
+                }
+                return false;
+              });
+            } else {
+              // Search by lot number (legacy behavior)
+              const lotNumber = cleanLotNumber(decodedLotNumber);
+              foundLot = lots.find((lot: any) => 
+                lot.harvest?.lotNumber?.toLowerCase() === lotNumber.toLowerCase() ||
+                lot.harvest?.lotNumber?.toLowerCase() === decodedLotNumber.toLowerCase() ||
+                lot.harvest?.lotNumber?.toLowerCase() === rawLotNumber.toLowerCase()
+              );
+            }
             
             if (foundLot) {
               console.log('Found lot data:', foundLot);
@@ -167,7 +184,7 @@ export default function LotDetailPage() {
             }
           }
           
-          throw new Error(`Aucun lot trouvé avec le numéro: ${lotNumber}`);
+          throw new Error(`Aucun lot trouvé avec ${isDateFormat ? 'la date' : 'le numéro'}: ${decodedLotNumber}`);
         } catch (error) {
           console.error(`Attempt ${retryCount + 1} failed:`, error);
           

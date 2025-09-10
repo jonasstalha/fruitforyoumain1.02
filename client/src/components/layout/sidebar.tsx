@@ -203,11 +203,7 @@ export default function Sidebar() {
       icon: <Tractor className="h-5 w-5 mr-2" />,
       path: "/farms",
     },
-    {
-      title: t('common.manageClientOrders'),
-      icon: <PlusSquare className="h-5 w-5 mr-2" />,
-      path: "/gererlescommandesclinet",
-    },
+
   ];
 
   const logisticsItems = [

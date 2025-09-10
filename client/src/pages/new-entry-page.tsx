@@ -22,6 +22,9 @@ export default function NewEntryPage() {
   const { user } = useAuth();
   const [location, setLocation] = useLocation();
   const [farms, setFarms] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [farmLoading, setFarmLoading] = useState(true);
+  const [warehouseLoading, setWarehouseLoading] = useState(true);
   const [error, setError] = useState('');
   const [showLotSelector, setShowLotSelector] = useState(true);
   const [selectedLot, setSelectedLot] = useState<MultiLot | null>(null);
@@ -36,15 +39,37 @@ export default function NewEntryPage() {
   } = useMultiLots();
 
   useEffect(() => {
-    const loadFarms = async () => {
+    const loadData = async () => {
       try {
+        // Load farms
+        setFarmLoading(true);
         const farmsData = await getFarms();
         setFarms(farmsData);
+        setFarmLoading(false);
+
+        // Load warehouses
+        setWarehouseLoading(true);
+        const { collection, getDocs } = await import('firebase/firestore');
+        const { firestore: db } = await import('@/lib/firebase');
+        
+        const warehousesQuery = collection(db, "entrepots");
+        const warehousesSnapshot = await getDocs(warehousesQuery);
+        const warehousesData = warehousesSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setWarehouses(warehousesData);
+        setWarehouseLoading(false);
+
       } catch (error) {
-        console.error("Error loading farms:", error);
+        console.error("Error loading data:", error);
+        setError("Erreur lors du chargement des données");
+        setFarmLoading(false);
+        setWarehouseLoading(false);
       }
     };
-    loadFarms();
+
+    loadData();
 
     // Check if lot ID is provided in URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -122,6 +147,8 @@ export default function NewEntryPage() {
         storageTemperature: 0,
         storageRoomId: "",
         exitDate: "",
+        warehouseId: "",
+        warehouseName: "",
       },
       export: {
         boxId: "",
@@ -191,7 +218,7 @@ export default function NewEntryPage() {
       case 4:
         return formData.packagingDate && formData.boxId;
       case 5:
-        return formData.storage.entryDate && formData.storage.storageRoomId;
+        return formData.storage.entryDate && formData.storage.storageRoomId && formData.storage.warehouseId;
       case 6:
         return formData.export.loadingDate && formData.export.containerId;
       case 7:
@@ -206,7 +233,7 @@ export default function NewEntryPage() {
     const step2Valid = formData.transport.transportCompany && formData.transport.driverName;
     const step3Valid = formData.sorting.sortingDate && formData.sorting.qualityGrade;
     const step4Valid = formData.packagingDate && formData.boxId;
-    const step5Valid = formData.storage.entryDate && formData.storage.storageRoomId;
+    const step5Valid = formData.storage.entryDate && formData.storage.storageRoomId && formData.storage.warehouseId;
     const step6Valid = formData.export.loadingDate && formData.export.containerId;
     const step7Valid = formData.delivery.estimatedDeliveryDate && formData.delivery.clientName;
     
@@ -240,7 +267,7 @@ export default function NewEntryPage() {
     const step2Valid = formData.transport.transportCompany && formData.transport.driverName;
     const step3Valid = formData.sorting.sortingDate && formData.sorting.qualityGrade;
     const step4Valid = formData.packagingDate && formData.boxId;
-    const step5Valid = formData.storage.entryDate && formData.storage.storageRoomId;
+    const step5Valid = formData.storage.entryDate && formData.storage.storageRoomId && formData.storage.warehouseId;
     const step6Valid = formData.export.loadingDate && formData.export.containerId;
     const step7Valid = formData.delivery.estimatedDeliveryDate && formData.delivery.clientName;
     
@@ -508,6 +535,8 @@ export default function NewEntryPage() {
         storageTemperature: 0,
         storageRoomId: "",
         exitDate: "",
+        warehouseId: "",
+        warehouseName: "",
       },
       export: {
         boxId: "",
@@ -1109,18 +1138,65 @@ export default function NewEntryPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="storageRoomId" className="flex items-center gap-2 font-semibold">
-                    🏢 ID de la chambre froide <span className="text-red-500">*</span>
+                  <Label htmlFor="storageWarehouse" className="flex items-center gap-2 font-semibold">
+                    � Entrepôt de stockage <span className="text-red-500">*</span>
                   </Label>
-                  <Input
-                    id="storageRoomId"
-                    value={formData.storage?.storageRoomId || ""}
-                    onChange={(e) => handleChange("storage", "storageRoomId", e.target.value)}
-                    className="border-2 focus:border-indigo-500 transition-colors"
-                    placeholder="Ex: ROOM-001"
-                    required
-                  />
+                  {warehouseLoading ? (
+                    <div className="flex items-center space-x-2 p-3 border rounded-lg">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-indigo-500 border-t-transparent"></div>
+                      <span className="text-sm text-gray-600">Chargement des entrepôts...</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.storage?.warehouseId || ""}
+                      onChange={(e) => {
+                        const selectedWarehouse = warehouses.find(w => w.id === e.target.value);
+                        if (selectedWarehouse) {
+                          handleChange("storage", "warehouseId", selectedWarehouse.id);
+                          handleChange("storage", "warehouseName", selectedWarehouse.nom);
+                          // Reset room selection when warehouse changes
+                          handleChange("storage", "storageRoomId", "");
+                        }
+                      }}
+                      className="w-full p-3 border-2 rounded-lg focus:border-indigo-500 transition-colors"
+                      required
+                    >
+                      <option value="">Sélectionner un entrepôt</option>
+                      {warehouses.map((warehouse) => (
+                        <option key={warehouse.id} value={warehouse.id}>
+                          {warehouse.nom} - {warehouse.localisation}
+                          {warehouse.capaciteTotale && ` (Capacité: ${warehouse.capaciteTotale} tonnes)`}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
+
+                {formData.storage?.warehouseId && (
+                  <div className="space-y-2">
+                    <Label htmlFor="storageRoomId" className="flex items-center gap-2 font-semibold">
+                      🏠 Salle de stockage <span className="text-red-500">*</span>
+                    </Label>
+                    <select
+                      value={formData.storage?.storageRoomId || ""}
+                      onChange={(e) => handleChange("storage", "storageRoomId", e.target.value)}
+                      className="w-full p-3 border-2 rounded-lg focus:border-indigo-500 transition-colors"
+                      required
+                    >
+                      <option value="">Sélectionner une salle</option>
+                      {(() => {
+                        const selectedWarehouse = warehouses.find(w => w.id === formData.storage?.warehouseId);
+                        return selectedWarehouse?.salles?.map((salle: any) => (
+                          <option key={salle.nom} value={salle.nom}>
+                            {salle.nom}
+                            {salle.capacite && ` (Capacité: ${salle.capacite} tonnes)`}
+                            {salle.temperature && ` - ${salle.temperature}°C`}
+                          </option>
+                        )) || [];
+                      })()}
+                    </select>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

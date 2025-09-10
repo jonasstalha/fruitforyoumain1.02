@@ -16,7 +16,6 @@ import {
 } from 'firebase/firestore';
 import { useSharedLots } from '../../hooks/useSharedLots';
 import { SharedLot } from '../../lib/sharedLotService';
-import { LotCountDisplay } from '../../components/shared/LotSyncProvider';
 
 // Production Lot Interface
 interface ProductionLot {
@@ -844,11 +843,6 @@ const SuiviProduction = () => {
     <div className="bg-gradient-to-b from-green-50 to-white min-h-screen p-4 md:p-6">
       <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-xl p-6">
         
-        {/* Lot Synchronization Status */}
-        <div className="mb-6">
-          <LotCountDisplay />
-        </div>
-
         {/* Lot Management Header */}
         <div className="bg-white border-b p-4 shadow-sm mb-6">
           <div className="flex justify-between items-center mb-4">

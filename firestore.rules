@@ -478,6 +478,25 @@ service cloud.firestore {
       allow delete: if isAuthenticated();
     }
 
+    // Expeditions collection for logistics expedition forms
+    function isValidExpedition() {
+      let data = request.resource.data;
+      return data.id is string
+        && data.name is string
+        && data.date is string
+        && data.headerData is map
+        && data.rows is list
+        && data.createdAt != null
+        && data.updatedAt != null;
+    }
+
+    match /expeditions/{expeditionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidExpedition();
+      allow update: if isAuthenticated() && isValidExpedition();
+      allow delete: if isAuthenticated();
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;
@@ -515,6 +534,16 @@ service firebase.storage {
 
     // Quality Control images
     match /quality_control/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Expedition reports and PDFs
+    match /reports/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Expedition PDFs
+    match /expedition_pdfs/{allPaths=**} {
       allow read, write: if request.auth != null;
     }
 

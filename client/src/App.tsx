@@ -22,7 +22,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import RapportGenerating from "./pages/logistique/rapport-generating";
 import facturestemplates from "./pages/logistique/factures-templates";
 import inventory from "./pages/logistique/inventory";
-import qualitycontrol from "./pages/quality/qualitycontrol";
+import QualityControl from "./pages/quality/qualitycontrol";
 import personnelmanagement from "./pages/personnele/personnelmanagement";
 import calculedeconsomation from "./pages/production/calculedeconsomation";
 import archifage from "./pages/src/archifage";
@@ -42,6 +42,10 @@ import Archivagedescontroles from "@/pages/quality/Archivagedescontroles";
 import FirebaseConnectionTest from "@/components/FirebaseConnectionTest";
 import QualityControlDebug from "@/components/QualityControlDebug";
 import QualityControlSaveTest from "@/components/QualityControlSaveTest";
+import FirebaseExpeditionTest from "@/components/FirebaseExpeditionTest";
+import FirebaseExpeditionTestSimple from "@/components/FirebaseExpeditionTestSimple";
+import FirebaseDebugger from './components/FirebaseDebugger';
+import ExpeditionHistoryTest from './components/ExpeditionHistoryTest';
 import ReportsPagee from "@/pages/tracability/ReportsPage";
 import FarmDetailPage from "@/pages/farm-detail-page";
 import NewProductPage from "@/pages/new-product-page";
@@ -107,9 +111,13 @@ function AuthenticatedRoutes() {
         <Route path="/factures-templates" component={facturestemplates} />
         <Route path="/traceability" component={StatisticsPage} />
         <Route path="/inventory" component={inventory} />
-        <Route path="/qualitycontrol" component={qualitycontrol} />
+        <Route path="/qualitycontrol" component={QualityControl} />
         {/* <Route path="/quality-test" component={QualityControlTestPage} /> */}
         <Route path="/firebase-test" component={FirebaseConnectionTest} />
+        <Route path="/firebase-expedition-test" component={FirebaseExpeditionTest} />
+        <Route path="/firebase-expedition-simple" component={FirebaseExpeditionTestSimple} />
+        <Route path="/firebase-debugger" component={FirebaseDebugger} />
+        <Route path="/expedition-history-test" component={ExpeditionHistoryTest} />
         <Route path="/quality-debug" component={QualityControlDebug} />
         <Route path="/quality-save-test" component={QualityControlSaveTest} />
         <Route path="/personnelmanagement" component={personnelmanagement} />
