@@ -3,6 +3,8 @@ import { FilePlus, Package, Plus, RefreshCw, Save, Trash2, Copy } from 'lucide-r
 import { format } from 'date-fns';
 import { useSharedLots } from '@/hooks/useSharedLots';
 import { SharedLot } from '@/lib/sharedLotService';
+import logoUrl from '../../../assets/logo.png';
+import { receptionArchiveService, ReceptionArchive } from '@/lib/receptionArchiveService';
 
 // Data model for a Suivi Reception lot
 interface ReceptionRow {
@@ -71,6 +73,9 @@ const SuiviReception: React.FC = () => {
   // Only reception lots
   const receptionLots = useMemo(() => lots.filter(l => l.type === 'reception'), [lots]);
   const [currentLotId, setCurrentLotId] = useState<string>('');
+  const [archives, setArchives] = useState<ReceptionArchive[]>([]);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
 
   // Convert SharedLot to local model
   const sharedToLocal = (sl: SharedLot): ReceptionFormData => {
@@ -90,7 +95,7 @@ const SuiviReception: React.FC = () => {
     };
   };
 
-  const createNewLot = async () => {
+  const createNewLot = async (): Promise<string> => {
     const form = defaultReceptionForm();
     const lotNumber = `Réception ${receptionLots.length + 1}`;
     const newId = await addLot({
@@ -100,6 +105,7 @@ const SuiviReception: React.FC = () => {
       receptionData: form
     });
     setCurrentLotId(newId);
+    return newId;
   };
 
   const duplicateLot = async (lotId: string) => {
@@ -144,6 +150,55 @@ const SuiviReception: React.FC = () => {
     return { totalBrut, totalNet };
   };
 
+  // Archive subscription
+  useEffect(() => {
+    const unsub = receptionArchiveService.subscribe(setArchives);
+    return () => unsub();
+  }, []);
+
+  const saveToArchive = async () => {
+    setIsArchiving(true);
+    try {
+      const form = getCurrentForm();
+      const lot = getCurrentLot();
+      const lotNumber = lot?.lotNumber || `Réception ${new Date().toISOString()}`;
+      await receptionArchiveService.add({ lotNumber, data: form });
+      alert('Réception archivée avec succès');
+    } catch (e) {
+      console.error(e);
+      alert('Erreur lors de l\'archivage');
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
+  const loadArchive = async (archive: ReceptionArchive) => {
+    // Load archived data into current editor by saving into current shared lot
+    let targetId = currentLotId;
+    if (!targetId) {
+      targetId = await createNewLot();
+    }
+    if (!targetId) return;
+    await updateLot(targetId, { receptionData: archive.data });
+    setSelectedArchiveId(archive.id);
+    alert('Archive chargée dans l\'éditeur');
+  };
+
+  const updateArchiveFromEditor = async () => {
+    if (!selectedArchiveId) {
+      alert('Aucune archive sélectionnée');
+      return;
+    }
+    const form = getCurrentForm();
+    await receptionArchiveService.update(selectedArchiveId, { data: form });
+    alert('Archive mise à jour');
+  };
+
+  const deleteArchive = async (id: string) => {
+    if (!confirm('Supprimer cette archive ?')) return;
+    await receptionArchiveService.delete(id);
+  };
+
   const generatePDF = async () => {
     const form = getCurrentForm();
     const lot = getCurrentLot();
@@ -151,102 +206,194 @@ const SuiviReception: React.FC = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
 
     const pageWidth = 210;
-    const margin = 8;
+    const margin = 10;
     const contentWidth = pageWidth - margin * 2;
 
-  const colors = {
-      primary: [46, 125, 50],
-      headerBg: [200, 230, 201],
-      tableBg: [232, 245, 233],
-      border: [224, 224, 224],
-      text: [33, 33, 33],
-      lightText: [97, 97, 97]
-  } as const;
+    // Colors matching the original form
+    const colors = {
+      headerGreen: [101, 174, 73],     // Green header
+      lightGreen: [200, 230, 201],     // Light green backgrounds
+      blue: [0, 100, 200],             // Blue for TOTALE
+      border: [0, 0, 0],               // Black borders
+      text: [0, 0, 0],                 // Black text
+      white: [255, 255, 255]           // White background
+    } as const;
 
-    const drawRect = (x: number, y: number, w: number, h: number, fill?: readonly number[]) => {
-      if (fill) doc.setFillColor(fill[0] as number, fill[1] as number, fill[2] as number);
+    const drawRect = (x: number, y: number, w: number, h: number, fill?: readonly number[], lineWidth = 0.5) => {
+      doc.setLineWidth(lineWidth);
+      if (fill) {
+        doc.setFillColor(fill[0], fill[1], fill[2]);
+      }
       doc.setDrawColor(colors.border[0], colors.border[1], colors.border[2]);
       doc.rect(x, y, w, h, fill ? 'FD' : 'S');
     };
-    const drawText = (t: string, x: number, y: number, s: number, bold = false) => {
-      doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+
+    const drawText = (
+      text: string,
+      x: number,
+      y: number,
+      size: number,
+      bold: boolean = false,
+      color: readonly [number, number, number] = colors.text as readonly [number, number, number]
+    ) => {
+      doc.setTextColor(color[0], color[1], color[2]);
       doc.setFont('helvetica', bold ? 'bold' : 'normal');
-      doc.setFontSize(s);
-      doc.text(t, x, y);
+      doc.setFontSize(size);
+      doc.text(text, x, y);
     };
 
-    // Header
     let y = margin;
-    drawRect(margin, y, contentWidth, 30, colors.headerBg);
-    drawText('SUIVI RECEPTION', margin + 4, y + 10, 16, true);
-    drawText('SMQ.ENR 24', margin + contentWidth - 60, y + 8, 9, true);
-    drawText('Date: 01/07/2023', margin + contentWidth - 60, y + 14, 8);
-    drawText('Version: 01', margin + contentWidth - 60, y + 20, 8);
 
-    y += 34;
+    // Helper to convert imported asset URL to data URL for jsPDF
+    const toDataURL = async (url: string): Promise<string> => {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      return await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onloadend = () => resolve(fr.result as string);
+        fr.onerror = reject;
+        fr.readAsDataURL(blob);
+      });
+    };
 
-    // Top fields
-    drawRect(margin, y, contentWidth, 20);
-    drawText(`Date: ${form.header.date || ''}`, margin + 4, y + 7, 9, true);
-    drawText(`Responsable: ${form.header.responsable || ''}`, margin + contentWidth / 3, y + 7, 9, true);
-    drawText(`Compagne: ${form.header.compagne || ''}`, margin + (2 * contentWidth) / 3, y + 7, 9, true);
+    // Logo block and main header
+    drawRect(margin, y, 30, 20, colors.lightGreen);
+    try {
+      const dataUrl = await toDataURL(logoUrl as string);
+      doc.addImage(dataUrl, 'PNG', margin + 2, y + 2, 26, 16);
+    } catch (e) {
+      // Fallback text if logo fails to load
+      drawText('LOGO', margin + 10, y + 12, 10, true);
+      console.warn('Failed to load logo for PDF:', e);
+    }
 
-    drawText(`N° BON DE LIVRISON : ${form.header.bonLivraison || ''}`, margin + 4, y + 15, 8);
-    drawText(`N° BON DE RECEPTION : ${form.header.bonReception || ''}`, margin + contentWidth / 2, y + 15, 8);
+    // Main title
+    drawRect(margin + 30, y, 100, 20, colors.headerGreen);
+    drawText('SUIVI RECEPTION', margin + 65, y + 12, 14, true, colors.white);
 
-    y += 24;
+    // Document info
+    drawRect(margin + 130, y, 60, 20, colors.white);
+    drawText('SMQ.ENR 24', margin + 135, y + 6, 9, true);
+    drawText('Date: 01/07/2023', margin + 135, y + 11, 8);
+    drawText('Version: 01', margin + 135, y + 16, 8);
 
-    drawRect(margin, y, contentWidth, 10, colors.tableBg);
-    drawText('PRODUIT : AVOCAT', margin + 4, y + 7, 9, true);
-    drawText('CONVENTIONNEL', margin + contentWidth / 2, y + 7, 8, form.header.conventionnel);
-    drawText('BIOLOGIQUE', margin + (contentWidth / 2) + 40, y + 7, 8, form.header.biologique);
+    y += 25;
 
-    y += 14;
+    // Form header section
+    drawRect(margin, y, contentWidth, 15, colors.white);
+    
+    // Date, Responsable, Compagne row
+    drawText('Date:', margin + 2, y + 6, 9, true);
+    drawText(form.header.date || '', margin + 15, y + 6, 9);
+    
+    drawText('Responsable:', margin + 65, y + 6, 9, true);
+    drawText(form.header.responsable || '', margin + 90, y + 6, 9);
+    
+    drawText('Compagne:', margin + 135, y + 6, 9, true);
+    drawText(form.header.compagne || '', margin + 155, y + 6, 9);
 
-    // Table header
-    const headers = ['N° PALETTE', 'NR CAISSE', 'TARE PALETTE', 'POIDS BRUT (kg)', 'POIDS NET (kg)', 'VARIETE', 'N°DE LOT INTERN', 'DECISION'];
-    const widths = [20, 22, 25, 28, 26, 20, 25, 24];
+    // Bon numbers row
+    drawText(`N° BON DE LIVRISON : ${form.header.bonLivraison || ''}`, margin + 2, y + 12, 8);
+    drawText(`N° BON DE RECEPTION : ${form.header.bonReception || ''}`, margin + 100, y + 12, 8);
 
-    drawRect(margin, y, contentWidth, 10, colors.tableBg);
+    y += 20;
+
+    // Product and type section
+    drawRect(margin, y, contentWidth, 10, colors.lightGreen);
+    drawText(`PRODUIT : ${form.header.produit}`, margin + 2, y + 6, 9, true);
+    
+    // Type checkboxes
+    const conventionnelText = form.header.conventionnel ? '☑ CONVENTIONNEL' : '☐ CONVENTIONNEL';
+    const biologiqueText = form.header.biologique ? '☑ BIOLOGIQUE' : '☐ BIOLOGIQUE';
+    drawText(conventionnelText, margin + 120, y + 6, 8);
+    drawText(biologiqueText, margin + 160, y + 6, 8);
+
+    y += 15;
+
+    // Table headers with exact column structure from image
+    const headers = ['N° PALETTE', 'NR CAISSE', 'TARE PALETTE', 'POIDS BRUT (Kg)', 'POIDS NET (Kg)', 'VARIETE', 'N°DE LOT INTERN', 'DECISION'];
+    const colWidths = [24, 20, 24, 26, 24, 20, 28, 24]; // Adjusted to match image proportions
+
+    drawRect(margin, y, contentWidth, 12, colors.lightGreen);
+    
     let x = margin;
-    headers.forEach((h, idx) => {
-      doc.line(x, y, x, y + 10);
-      drawText(h, x + 2, y + 7, 7, true);
-      x += widths[idx];
-    });
-    doc.line(margin + contentWidth, y, margin + contentWidth, y + 10);
-    y += 10;
-
-    // Rows (up to 20)
-    const formRows = getCurrentForm().rows;
-    for (let i = 0; i < formRows.length; i++) {
-      const row = formRows[i];
-      drawRect(margin, y, contentWidth, 8);
-      let cx = margin + 2;
-      const vals = [row.numeroPalette, row.nrCaisse, row.tarePalette, row.poidsBrut, row.poidsNet, row.variete, row.numeroLotInterne, row.decision];
-      for (let j = 0; j < headers.length; j++) {
-        drawText(vals[j] || '', cx, y + 5.5, 7);
-        cx += widths[j];
+    headers.forEach((header, i) => {
+      // Vertical lines between columns
+      if (i > 0) {
+        doc.line(x, y, x, y + 12);
       }
+      
+      // Multi-line headers for better fit
+      const lines = header.split(' ');
+      if (lines.length > 1) {
+        drawText(lines[0], x + 1, y + 5, 7, true);
+        drawText(lines.slice(1).join(' '), x + 1, y + 9, 7, true);
+      } else {
+        drawText(header, x + 1, y + 7.5, 7, true);
+      }
+      x += colWidths[i];
+    });
+
+    y += 12;
+
+    // Table rows - exactly 20 rows as in the image
+    for (let i = 0; i < 20; i++) {
+      const row = form.rows[i];
+      drawRect(margin, y, contentWidth, 8, colors.white);
+      
+      let cx = margin;
+      const values = [
+        row?.numeroPalette || '',
+        row?.nrCaisse || '',
+        row?.tarePalette || '',
+        row?.poidsBrut || '',
+        row?.poidsNet || '',
+        row?.variete || '',
+        row?.numeroLotInterne || '',
+        row?.decision || ''
+      ];
+
+      values.forEach((value, j) => {
+        // Vertical lines
+        if (j > 0) {
+          doc.line(cx, y, cx, y + 8);
+        }
+        drawText(value, cx + 1, y + 5.5, 7);
+        cx += colWidths[j];
+      });
       y += 8;
     }
 
-    // Totals/Footer
+    // TOTALE section (blue background like in image)
     y += 2;
-    const totals = calculateTotals();
-    drawRect(margin, y, contentWidth, 10, colors.tableBg);
-    drawText('TOTALE', margin + 4, y + 7, 9, true);
-    drawText(`POIDS BRUT: ${totals.totalBrut.toFixed(2)} kg`, margin + contentWidth / 2, y + 7, 8);
-    drawText(`POIDS NET: ${totals.totalNet.toFixed(2)} kg`, margin + (contentWidth / 2) + 45, y + 7, 8);
+    drawRect(margin, y, contentWidth, 10, [0, 150, 255]);
+    drawText('TOTALE', margin + 2, y + 6, 9, true, colors.white);
 
-    y += 14;
-    drawRect(margin, y, contentWidth, 12);
-    drawText(`POIDS TICKET: ${form.footer.poidsTicket || ''}`, margin + 4, y + 8, 9, true);
-    drawText(`POIDS USINE: ${form.footer.poidsUsine || ''}`, margin + contentWidth / 2, y + 8, 9, true);
-    drawText(`ECART: ${form.footer.ecart || ''}`, margin + (contentWidth / 2) + 50, y + 8, 9, true);
+    y += 15;
 
-    const file = `Suivi_Reception_${(getCurrentLot()?.lotNumber || 'Lot').replace(/\s+/g, '_')}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
-    doc.save(file);
+    // Footer section with three columns
+    drawRect(margin, y, contentWidth, 12, colors.white);
+    
+    const footerWidth = contentWidth / 3;
+    
+    // POIDS TICKET
+    drawText('POIDS TICKET', margin + 2, y + 4, 8, true);
+    drawText(form.footer.poidsTicket || '', margin + 2, y + 9, 8);
+    
+    // POIDS USINE
+    drawText('POIDS USINE', margin + footerWidth + 2, y + 4, 8, true);
+    drawText(form.footer.poidsUsine || '', margin + footerWidth + 2, y + 9, 8);
+    
+    // ECART
+    drawText('ECART', margin + (footerWidth * 2) + 2, y + 4, 8, true);
+    drawText(form.footer.ecart || '', margin + (footerWidth * 2) + 2, y + 9, 8);
+
+    // Vertical dividers in footer
+    doc.line(margin + footerWidth, y, margin + footerWidth, y + 12);
+    doc.line(margin + (footerWidth * 2), y, margin + (footerWidth * 2), y + 12);
+
+    const fileName = `Suivi_Reception_${(lot?.lotNumber || 'Lot').replace(/\s+/g, '_')}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
+    doc.save(fileName);
   };
 
   // Auto-select first lot
@@ -260,9 +407,9 @@ const SuiviReception: React.FC = () => {
 
   return (
     <div className="bg-gradient-to-b from-green-50 to-white min-h-screen p-4 md:p-6">
-      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-xl p-6">
-        {/* Header and Controls */}
-        <div className="bg-white border-b p-4 shadow-sm mb-6">
+      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-xl">
+        {/* Header Controls */}
+        <div className="bg-white border-b p-4 shadow-sm rounded-t-xl">
           <div className="flex justify-between items-center mb-4">
             <h1 className="text-2xl font-bold text-gray-800">Suivi de réception - Multi-lots</h1>
             <div className="flex gap-3">
@@ -306,150 +453,356 @@ const SuiviReception: React.FC = () => {
           </div>
         </div>
 
-        {/* Form header */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className="p-4 bg-gray-50 rounded-lg space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-              <input type="date" value={form.header.date} onChange={(e) => updateForm({ header: { ...form.header, date: e.target.value } })} className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all" />
+        {/* Form matching the original PDF layout exactly */}
+        <div className="p-6">
+          {/* Header with logo section, title and document info */}
+          <div className="flex mb-6">
+            {/* Company logo */}
+            <div className="w-24 h-16 bg-green-100 border-2 border-green-300 rounded-lg flex items-center justify-center mr-4 overflow-hidden">
+              <img src={logoUrl} alt="Fruits For You" className="object-contain h-full" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Responsable</label>
-              <input type="text" value={form.header.responsable} onChange={(e) => updateForm({ header: { ...form.header, responsable: e.target.value } })} className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all" />
+            
+            {/* Main title */}
+            <div className="flex-1 bg-green-600 text-white flex items-center justify-center rounded-lg mr-4">
+              <h2 className="text-xl font-bold">SUIVI RECEPTION</h2>
             </div>
-          </div>
-          <div className="p-4 bg-gray-50 rounded-lg space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Compagne</label>
-              <input type="text" value={form.header.compagne} onChange={(e) => updateForm({ header: { ...form.header, compagne: e.target.value } })} className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Produit</label>
-              <input type="text" value={form.header.produit} onChange={(e) => updateForm({ header: { ...form.header, produit: e.target.value } })} className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all" />
-            </div>
-          </div>
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <label className="block text-sm font-medium text-gray-700 mb-3">Type</label>
-            <div className="space-y-2">
-              <label className="inline-flex items-center">
-                <input type="checkbox" checked={form.header.conventionnel} onChange={(e) => updateForm({ header: { ...form.header, conventionnel: e.target.checked } })} className="form-checkbox text-green-600 focus:ring-green-500 h-4 w-4" />
-                <span className="ml-2">CONVENTIONNEL</span>
-              </label>
-              <label className="inline-flex items-center">
-                <input type="checkbox" checked={form.header.biologique} onChange={(e) => updateForm({ header: { ...form.header, biologique: e.target.checked } })} className="form-checkbox text-green-600 focus:ring-green-500 h-4 w-4" />
-                <span className="ml-2">BIOLOGIQUE</span>
-              </label>
+            
+            {/* Document info */}
+            <div className="w-40 bg-gray-50 border-2 border-gray-300 rounded-lg p-2">
+              <div className="text-sm font-bold">SMQ.ENR 24</div>
+              <div className="text-xs">Date: 01/07/2023</div>
+              <div className="text-xs">Version: 01</div>
             </div>
           </div>
-        </div>
 
-        {/* Bon numbers */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <label className="block text-sm font-medium text-gray-700 mb-1">N° BON DE LIVRISON</label>
-            <input type="text" value={form.header.bonLivraison} onChange={(e) => updateForm({ header: { ...form.header, bonLivraison: e.target.value } })} className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all" />
-          </div>
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <label className="block text-sm font-medium text-gray-700 mb-1">N° BON DE RECEPTION</label>
-            <input type="text" value={form.header.bonReception} onChange={(e) => updateForm({ header: { ...form.header, bonReception: e.target.value } })} className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all" />
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">N° PALETTE</th>
-                  <th className="px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">NR CAISSE</th>
-                  <th className="px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">TARE PALETTE</th>
-                  <th className="px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">POIDS BRUT (kg)</th>
-                  <th className="px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">POIDS NET (kg)</th>
-                  <th className="px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">VARIETE</th>
-                  <th className="px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">N°DE LOT INTERN</th>
-                  <th className="px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">DECISION</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {getCurrentForm().rows.map((row, idx) => (
-                  <tr key={idx} className={`${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-green-50`}>
-                    <td className="px-3 py-2 border-r">
-                      <input type="text" value={row.numeroPalette} onChange={(e) => {
-                        const rows = [...getCurrentForm().rows]; rows[idx] = { ...row, numeroPalette: e.target.value }; updateForm({ rows });
-                      }} className="w-full p-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
-                    </td>
-                    <td className="px-3 py-2 border-r">
-                      <input type="text" value={row.nrCaisse} onChange={(e) => { const rows = [...getCurrentForm().rows]; rows[idx] = { ...row, nrCaisse: e.target.value }; updateForm({ rows }); }} className="w-full p-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
-                    </td>
-                    <td className="px-3 py-2 border-r">
-                      <input type="text" value={row.tarePalette} onChange={(e) => { const rows = [...getCurrentForm().rows]; rows[idx] = { ...row, tarePalette: e.target.value }; updateForm({ rows }); }} className="w-full p-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
-                    </td>
-                    <td className="px-3 py-2 border-r">
-                      <input type="number" value={row.poidsBrut} onChange={(e) => { const rows = [...getCurrentForm().rows]; rows[idx] = { ...row, poidsBrut: e.target.value }; updateForm({ rows }); }} className="w-full p-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
-                    </td>
-                    <td className="px-3 py-2 border-r">
-                      <input type="number" value={row.poidsNet} onChange={(e) => { const rows = [...getCurrentForm().rows]; rows[idx] = { ...row, poidsNet: e.target.value }; updateForm({ rows }); }} className="w-full p-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
-                    </td>
-                    <td className="px-3 py-2 border-r">
-                      <input type="text" value={row.variete} onChange={(e) => { const rows = [...getCurrentForm().rows]; rows[idx] = { ...row, variete: e.target.value }; updateForm({ rows }); }} className="w-full p-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
-                    </td>
-                    <td className="px-3 py-2 border-r">
-                      <input type="text" value={row.numeroLotInterne} onChange={(e) => { const rows = [...getCurrentForm().rows]; rows[idx] = { ...row, numeroLotInterne: e.target.value }; updateForm({ rows }); }} className="w-full p-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input type="text" value={row.decision} onChange={(e) => { const rows = [...getCurrentForm().rows]; rows[idx] = { ...row, decision: e.target.value }; updateForm({ rows }); }} className="w-full p-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Totals */}
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="p-6 bg-blue-50 rounded-lg">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Totaux</h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="font-medium">TOTAL POIDS BRUT:</span>
-                <span className="text-lg font-bold text-blue-600">{calculateTotals().totalBrut.toFixed(2)} Kg</span>
+          {/* Form fields section matching original layout */}
+          <div className="border-2 border-gray-400 mb-4">
+            {/* First row: Date, Responsable, Compagne */}
+            <div className="flex border-b border-gray-400 p-2 bg-gray-50">
+              <div className="flex-1 flex items-center">
+                <span className="font-bold mr-2">Date:</span>
+                <input
+                  type="date"
+                  value={form.header.date}
+                  onChange={(e) => updateForm({ header: { ...form.header, date: e.target.value } })}
+                  className="border-0 bg-transparent focus:outline-none"
+                />
               </div>
-              <div className="flex justify-between items-center">
-                <span className="font-medium">POIDS NET:</span>
-                <span className="text-lg font-bold text-blue-600">{calculateTotals().totalNet.toFixed(2)} Kg</span>
+              <div className="flex-1 flex items-center border-l border-gray-400 pl-2">
+                <span className="font-bold mr-2">Responsable:</span>
+                <input
+                  type="text"
+                  value={form.header.responsable}
+                  onChange={(e) => updateForm({ header: { ...form.header, responsable: e.target.value } })}
+                  className="border-0 bg-transparent focus:outline-none flex-1"
+                />
+              </div>
+              <div className="flex-1 flex items-center border-l border-gray-400 pl-2">
+                <span className="font-bold mr-2">Compagne:</span>
+                <input
+                  type="text"
+                  value={form.header.compagne}
+                  onChange={(e) => updateForm({ header: { ...form.header, compagne: e.target.value } })}
+                  className="border-0 bg-transparent focus:outline-none flex-1"
+                />
+              </div>
+            </div>
+
+            {/* Second row: Bon numbers */}
+            <div className="flex p-2 bg-white border-b border-gray-400">
+              <div className="flex-1 flex items-center">
+                <span className="text-sm mr-2">N° BON DE LIVRISON :</span>
+                <input
+                  type="text"
+                  value={form.header.bonLivraison}
+                  onChange={(e) => updateForm({ header: { ...form.header, bonLivraison: e.target.value } })}
+                  className="border-0 bg-transparent focus:outline-none flex-1"
+                />
+              </div>
+              <div className="flex-1 flex items-center border-l border-gray-400 pl-2">
+                <span className="text-sm mr-2">N° BON DE RECEPTION :</span>
+                <input
+                  type="text"
+                  value={form.header.bonReception}
+                  onChange={(e) => updateForm({ header: { ...form.header, bonReception: e.target.value } })}
+                  className="border-0 bg-transparent focus:outline-none flex-1"
+                />
+              </div>
+            </div>
+
+            {/* Third row: Product and type */}
+            <div className="flex p-2 bg-green-100 items-center">
+              <div className="flex-1">
+                <span className="font-bold mr-2">PRODUIT :</span>
+                <input
+                  type="text"
+                  value={form.header.produit}
+                  onChange={(e) => updateForm({ header: { ...form.header, produit: e.target.value } })}
+                  className="border-0 bg-transparent focus:outline-none font-bold"
+                />
+              </div>
+              <div className="flex gap-4">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={form.header.conventionnel}
+                    onChange={(e) => updateForm({ header: { ...form.header, conventionnel: e.target.checked } })}
+                    className="mr-1"
+                  />
+                  <span className="text-sm font-medium">CONVENTIONNEL</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={form.header.biologique}
+                    onChange={(e) => updateForm({ header: { ...form.header, biologique: e.target.checked } })}
+                    className="mr-1"
+                  />
+                  <span className="text-sm font-medium">BIOLOGIQUE</span>
+                </label>
               </div>
             </div>
           </div>
-          <div className="p-6 bg-green-50 rounded-lg">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Poids & Ecart</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">POIDS TICKET</label>
-                <input type="text" value={form.footer.poidsTicket} onChange={(e) => updateForm({ footer: { ...form.footer, poidsTicket: e.target.value } })} className="w-full p-2 rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
+
+          {/* Table matching the original exactly */}
+          <div className="border-2 border-gray-400 mb-4">
+            {/* Table header */}
+            <div className="flex bg-green-100 border-b border-gray-400">
+              <div className="w-20 p-2 border-r border-gray-400 text-center">
+                <div className="text-xs font-bold">N° PALETTE</div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">POIDS USINE</label>
-                <input type="text" value={form.footer.poidsUsine} onChange={(e) => updateForm({ footer: { ...form.footer, poidsUsine: e.target.value } })} className="w-full p-2 rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
+              <div className="w-16 p-2 border-r border-gray-400 text-center">
+                <div className="text-xs font-bold">NR CAISSE</div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ECART</label>
-                <input type="text" value={form.footer.ecart} onChange={(e) => updateForm({ footer: { ...form.footer, ecart: e.target.value } })} className="w-full p-2 rounded border border-gray-300 focus:ring-1 focus:ring-green-500 focus:border-green-500" />
+              <div className="w-20 p-2 border-r border-gray-400 text-center">
+                <div className="text-xs font-bold leading-tight">TARE<br/>PALETTE</div>
+              </div>
+              <div className="w-24 p-2 border-r border-gray-400 text-center">
+                <div className="text-xs font-bold leading-tight">POIDS BRUT<br/>(Kg)</div>
+              </div>
+              <div className="w-20 p-2 border-r border-gray-400 text-center">
+                <div className="text-xs font-bold leading-tight">POIDS NET<br/>(Kg)</div>
+              </div>
+              <div className="w-16 p-2 border-r border-gray-400 text-center">
+                <div className="text-xs font-bold">VARIETE</div>
+              </div>
+              <div className="w-24 p-2 border-r border-gray-400 text-center">
+                <div className="text-xs font-bold leading-tight">N°DE LOT<br/>INTERN</div>
+              </div>
+              <div className="flex-1 p-2 text-center">
+                <div className="text-xs font-bold">DECISION</div>
+              </div>
+            </div>
+
+            {/* Table rows - exactly 20 rows */}
+            {form.rows.map((row, index) => (
+              <div key={index} className="flex border-b border-gray-400 hover:bg-gray-50">
+                <div className="w-20 border-r border-gray-400">
+                  <input
+                    type="text"
+                    value={row.numeroPalette}
+                    onChange={(e) => {
+                      const rows = [...form.rows];
+                      rows[index] = { ...row, numeroPalette: e.target.value };
+                      updateForm({ rows });
+                    }}
+                    className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
+                  />
+                </div>
+                <div className="w-16 border-r border-gray-400">
+                  <input
+                    type="text"
+                    value={row.nrCaisse}
+                    onChange={(e) => {
+                      const rows = [...form.rows];
+                      rows[index] = { ...row, nrCaisse: e.target.value };
+                      updateForm({ rows });
+                    }}
+                    className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
+                  />
+                </div>
+                <div className="w-20 border-r border-gray-400">
+                  <input
+                    type="text"
+                    value={row.tarePalette}
+                    onChange={(e) => {
+                      const rows = [...form.rows];
+                      rows[index] = { ...row, tarePalette: e.target.value };
+                      updateForm({ rows });
+                    }}
+                    className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
+                  />
+                </div>
+                <div className="w-24 border-r border-gray-400">
+                  <input
+                    type="number"
+                    value={row.poidsBrut}
+                    onChange={(e) => {
+                      const rows = [...form.rows];
+                      rows[index] = { ...row, poidsBrut: e.target.value };
+                      updateForm({ rows });
+                    }}
+                    className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
+                    step="0.01"
+                  />
+                </div>
+                <div className="w-20 border-r border-gray-400">
+                  <input
+                    type="number"
+                    value={row.poidsNet}
+                    onChange={(e) => {
+                      const rows = [...form.rows];
+                      rows[index] = { ...row, poidsNet: e.target.value };
+                      updateForm({ rows });
+                    }}
+                    className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
+                    step="0.01"
+                  />
+                </div>
+                <div className="w-16 border-r border-gray-400">
+                  <input
+                    type="text"
+                    value={row.variete}
+                    onChange={(e) => {
+                      const rows = [...form.rows];
+                      rows[index] = { ...row, variete: e.target.value };
+                      updateForm({ rows });
+                    }}
+                    className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
+                  />
+                </div>
+                <div className="w-24 border-r border-gray-400">
+                  <input
+                    type="text"
+                    value={row.numeroLotInterne}
+                    onChange={(e) => {
+                      const rows = [...form.rows];
+                      rows[index] = { ...row, numeroLotInterne: e.target.value };
+                      updateForm({ rows });
+                    }}
+                    className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
+                  />
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={row.decision}
+                    onChange={(e) => {
+                      const rows = [...form.rows];
+                      rows[index] = { ...row, decision: e.target.value };
+                      updateForm({ rows });
+                    }}
+                    className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
+                  />
+                </div>
+              </div>
+            ))}
+
+            {/* TOTALE row */}
+            <div className="flex bg-blue-500 text-white">
+              <div className="w-20 p-2 text-center font-bold text-sm">TOTALE</div>
+              <div className="flex-1"></div>
+            </div>
+          </div>
+
+          {/* Footer section matching original */}
+          <div className="border-2 border-gray-400 mb-6">
+            <div className="flex">
+              <div className="flex-1 p-3 border-r border-gray-400">
+                <div className="text-sm font-bold mb-1">POIDS TICKET</div>
+                <input
+                  type="text"
+                  value={form.footer.poidsTicket}
+                  onChange={(e) => updateForm({ footer: { ...form.footer, poidsTicket: e.target.value } })}
+                  className="w-full border-0 bg-transparent focus:outline-none"
+                />
+              </div>
+              <div className="flex-1 p-3 border-r border-gray-400">
+                <div className="text-sm font-bold mb-1">POIDS USINE</div>
+                <input
+                  type="text"
+                  value={form.footer.poidsUsine}
+                  onChange={(e) => updateForm({ footer: { ...form.footer, poidsUsine: e.target.value } })}
+                  className="w-full border-0 bg-transparent focus:outline-none"
+                />
+              </div>
+              <div className="flex-1 p-3">
+                <div className="text-sm font-bold mb-1">ECART</div>
+                <input
+                  type="text"
+                  value={form.footer.ecart}
+                  onChange={(e) => updateForm({ footer: { ...form.footer, ecart: e.target.value } })}
+                  className="w-full border-0 bg-transparent focus:outline-none"
+                />
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Actions */}
-        <div className="mt-6 flex flex-wrap gap-3">
-          <button onClick={generatePDF} className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-all">
-            <FilePlus size={20} /> Générer PDF
-          </button>
-          <button onClick={() => updateForm(defaultReceptionForm())} className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-all">
-            <RefreshCw size={20} /> Réinitialiser
-          </button>
+          {/* Actions */}
+          <div className="flex flex-wrap gap-3">
+            <button onClick={generatePDF} className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-all">
+              <FilePlus size={20} /> Générer PDF
+            </button>
+            <button onClick={() => updateForm(defaultReceptionForm())} className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-all">
+              <RefreshCw size={20} /> Réinitialiser
+            </button>
+            <button onClick={saveToArchive} disabled={isArchiving} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-all disabled:opacity-60">
+              <Save size={20} /> {isArchiving ? 'Archivage...' : 'Archiver'}
+            </button>
+            {selectedArchiveId && (
+              <button onClick={updateArchiveFromEditor} className="flex items-center gap-2 bg-amber-600 text-white px-6 py-3 rounded-lg hover:bg-amber-700 transition-all">
+                <Save size={20} /> Mettre à jour l'archive
+              </button>
+            )}
+          </div>
         </div>
+      </div>
+      {/* Archived receptions */}
+      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-xl mt-6 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">Archives - Réceptions</h2>
+        </div>
+        {archives.length === 0 ? (
+          <div className="text-gray-500">Aucune archive pour le moment.</div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {archives.map((a) => (
+              <div key={a.id} className={`border rounded-lg p-4 ${selectedArchiveId === a.id ? 'ring-2 ring-blue-500' : ''}`}>
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">{a.lotNumber}</div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => loadArchive(a)}
+                      className="px-2 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                    >
+                      Ouvrir
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const name = prompt('Renommer l\'archive en :', a.lotNumber);
+                        if (name && name.trim()) {
+                          await receptionArchiveService.update(a.id, { lotNumber: name.trim() });
+                        }
+                      }}
+                      className="px-2 py-1 text-sm bg-amber-600 text-white rounded hover:bg-amber-700"
+                    >
+                      Renommer
+                    </button>
+                    <button
+                      onClick={() => deleteArchive(a.id)}
+                      className="px-2 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500 mt-2">
+                  Dernière mise à jour: {a.updatedAt?.toDate ? a.updatedAt.toDate().toLocaleString() : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

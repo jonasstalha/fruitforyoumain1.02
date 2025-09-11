@@ -398,6 +398,22 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    // Reception archives (Suivi Réception historical forms)
+    function isValidReceptionArchive() {
+      let data = request.resource.data;
+      return data.lotNumber is string
+        && data.data is map
+        && data.createdAt != null
+        && data.updatedAt != null;
+    }
+
+    match /reception_archives/{archiveId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidReceptionArchive();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
     // Shared lots for production/quality sync
     match /shared_lots/{documentId} {
       allow read, write: if isAuthenticated();
