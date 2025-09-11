@@ -3,6 +3,7 @@ import { Save, FilePlus, RefreshCw, Check, Calendar, Package, User, Thermometer,
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { firestore } from '../../lib/firebase';
+import { saveQualityControlLot } from '../../lib/qualityControlService';
 import {
   collection,
   doc,
@@ -247,13 +248,45 @@ const SuiviProduction = () => {
     };
 
     try {
+      const lotNumber = `Lot ${productionLots.length + 1}`;
       const lotId = await addSharedLot({
-        lotNumber: `Lot ${productionLots.length + 1}`,
+        lotNumber,
         status: 'brouillon',
         type: 'production',
         productionData: formData
       });
       setCurrentLotId(lotId);
+
+      // Also create a matching Quality Control lot so it appears in QC page
+      try {
+        const today = new Date();
+        const qcFormData = {
+          date: today.toISOString().slice(0, 10),
+          product: 'AVOCAT',
+          variety: '',
+          campaign: `${today.getFullYear()}-${today.getFullYear() + 1}`,
+          clientLot: lotNumber,
+          shipmentNumber: '',
+          packagingType: '',
+          category: 'I',
+          exporterNumber: '106040',
+          frequency: '1 Carton/palette',
+          palettes: Array.from({ length: 5 }, () => ({}))
+        } as any;
+
+        await saveQualityControlLot({
+          id: `lot-${Date.now()}`,
+          lotNumber,
+          formData: qcFormData,
+          images: [],
+          status: 'draft',
+          phase: 'controller',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        } as any);
+      } catch (qcErr) {
+        console.warn('QC lot creation skipped (likely unauthenticated):', qcErr);
+      }
     } catch (e) {
       console.error('Erreur lors de la création du lot:', e);
     }

@@ -40,6 +40,8 @@ import {
 } from '../../lib/firebaseService';
 import { getAvocadoTrackingData } from '../../lib/firebaseService';
 import { multiLotService } from '../../lib/multiLotService';
+import { sharedLotService, SharedLot } from '../../lib/sharedLotService';
+import { saveQualityControlLot } from '../../lib/qualityControlService';
 
 interface OrderItem {
   id: string;
@@ -81,6 +83,7 @@ export default function OrderTrackingView() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [lots, setLots] = useState<any[]>([]);
   const [multiLots, setMultiLots] = useState<any[]>([]);
+  const [sharedLots, setSharedLots] = useState<SharedLot[]>([]);
   const [clients, setClients] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -164,6 +167,14 @@ export default function OrderTrackingView() {
     };
 
     fetchData();
+  }, []);
+
+  // Subscribe to shared_lots (production and quality)
+  useEffect(() => {
+    const unsubscribe = sharedLotService.subscribeToLots((lots) => {
+      setSharedLots(lots);
+    });
+    return () => unsubscribe();
   }, []);
 
   // Real-time listener for order updates
@@ -395,13 +406,18 @@ export default function OrderTrackingView() {
     try {
       setSaving(true);
       
+      const now = new Date();
       const orderData = {
         orderNumber: newOrder.orderNumber || `ORD-${Date.now().toString(36).toUpperCase()}`,
         clientName: newOrder.clientName,
         clientEmail: 'N/A', // Default value since field was removed
         clientPhone: '', // Default value since field was removed
-        orderDate: new Date(),
-        requestedDeliveryDate: new Date(newOrder.requestedDeliveryDate || ''),
+        // Store dates as strings to satisfy firestore.rules (isValidClientOrder expects string)
+        orderDate: now.toISOString(),
+        requestedDeliveryDate: (newOrder.requestedDeliveryDate
+          ? new Date(newOrder.requestedDeliveryDate)
+          : now
+        ).toISOString(),
         status: 'pending' as const,
         priority: newOrder.priority || 'medium' as const,
         products: newOrder.items?.map(item => ({
@@ -418,19 +434,158 @@ export default function OrderTrackingView() {
         totalProcessingTime: newOrder.items?.reduce((total, item) => total + item.processingTime, 0) || 0,
         progress: 0,
         totalAmount: 0,
+        // Required by rules: shippingAddress (map) and paymentStatus (string)
+        shippingAddress: {
+          street: '',
+          city: '',
+          state: '',
+          zipCode: '',
+          country: ''
+        },
+        paymentStatus: 'pending' as const,
         notes: newOrder.notes || '',
-        createdAt: new Date(),
-        updatedAt: new Date()
+        createdAt: now,
+        updatedAt: now
       };
 
-      // Add to Firebase
+      // Add to Firebase (order)
       const docRef = await addDoc(collection(db, 'client-orders'), {
         ...orderData,
-        orderDate: serverTimestamp(),
-        requestedDeliveryDate: serverTimestamp(),
+        // Keep createdAt/updatedAt as server timestamps for ordering, but dates must remain strings
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+
+      // Create linked Production lot (shared_lots) and Quality Control lot
+      try {
+        const lotNumber = orderData.orderNumber;
+        const firstItem = (orderData.products || [])[0];
+        const productName = firstItem?.name || 'AVOCAT';
+        const today = new Date();
+        const dateISO = today.toISOString().slice(0, 10);
+
+  // 1) Production lot via sharedLotService (type: 'production')
+        const defaultProductionData = {
+          headerData: {
+            date: dateISO,
+            produit: productName || 'AVOCAT',
+            numeroLotClient: lotNumber,
+            typeProduction: 'CONVENTIONNEL'
+          },
+          calibreData: {
+            12: 0, 14: 0, 16: 0, 18: 0, 20: 0, 22: 0, 24: 0, 26: 0, 28: 0, 30: 0, 32: 0
+          },
+          nombrePalettes: '',
+          productionRows: Array.from({ length: 26 }, (_, index) => ({
+            numero: index + 1,
+            date: '',
+            heure: '',
+            calibre: '',
+            poidsBrut: '',
+            poidsNet: '',
+            numeroLotInterne: '',
+            variete: '',
+            nbrCP: '',
+            chambreFroide: '',
+            decision: ''
+          })),
+          visas: {
+            controleurQualite: '',
+            responsableQualite: '',
+            directeurOperationnel: ''
+          }
+        };
+
+        const productionLotId = await sharedLotService.addLot({
+          lotNumber,
+          status: 'brouillon',
+          type: 'production',
+          productionData: defaultProductionData
+        } as any);
+
+        // 2) Quality lot via sharedLotService (type: 'quality') so it appears on Quality page
+        const defaultQualitySharedData = {
+          headerData: {
+            date: dateISO,
+            produit: productName || 'AVOCAT',
+            numeroLotClient: lotNumber
+          }
+        };
+        const qualitySharedLotId = await sharedLotService.addLot({
+          lotNumber,
+          status: 'brouillon',
+          type: 'quality',
+          qualityData: defaultQualitySharedData
+        } as any);
+
+        // 3) Quality Control lot via qualityControlService (collection: quality_control_lots)
+        const qcFormData = {
+          date: dateISO,
+          product: productName,
+          variety: '',
+          campaign: `${today.getFullYear()}-${today.getFullYear() + 1}`,
+          clientLot: lotNumber,
+          shipmentNumber: '',
+          packagingType: '',
+          category: 'I',
+          exporterNumber: '106040',
+          frequency: '1 Carton/palette',
+          palettes: Array.from({ length: 5 }, () => ({ }))
+        };
+
+        const qcLotId = await saveQualityControlLot({
+          id: `lot-${Date.now()}`,
+          lotNumber,
+          formData: qcFormData as any,
+          images: [],
+          status: 'draft',
+          phase: 'controller',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        } as any);
+
+        // Link created lot IDs back to the order document
+        await updateDoc(doc(db, 'client-orders', docRef.id), {
+          linkedProductionLotId: productionLotId,
+          linkedQualitySharedLotId: qualitySharedLotId,
+          linkedQualityLotId: qcLotId,
+          updatedAt: serverTimestamp()
+        });
+
+        console.log('Linked lots created:', { productionLotId, qcLotId });
+      } catch (linkErr) {
+        console.error('Failed to create linked lots:', linkErr);
+        // Fallback: ensure QC shows something by writing to legacy 'lots' collection
+        try {
+          const today = new Date();
+          await addDoc(collection(db, 'lots'), {
+            lotNumber: orderData.orderNumber,
+            formData: {
+              date: today.toISOString().slice(0, 10),
+              product: (orderData.products?.[0]?.name) || 'AVOCAT',
+              variety: '',
+              campaign: `${today.getFullYear()}-${today.getFullYear() + 1}`,
+              clientLot: orderData.orderNumber,
+              shipmentNumber: '',
+              packagingType: '',
+              category: 'I',
+              exporterNumber: '106040',
+              frequency: '1 Carton/palette',
+              palettes: Array.from({ length: 5 }, () => ({}))
+            },
+            images: [],
+            status: 'draft',
+            phase: 'controller',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            syncedToFirebase: false
+          });
+          console.warn('Legacy QC lot created in "lots" collection as fallback');
+        } catch (legacyErr) {
+          console.error('Legacy QC fallback also failed:', legacyErr);
+        }
+        // Non-blocking: order is created even if linked lots fail
+      }
 
       // Reset form and close modal
       setNewOrder({
@@ -539,7 +694,7 @@ export default function OrderTrackingView() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Available Lots</p>
-                <p className="text-3xl font-bold text-gray-900">{lots.length + multiLots.length}</p>
+                <p className="text-3xl font-bold text-gray-900">{lots.length + multiLots.length + sharedLots.length}</p>
               </div>
               <div className="bg-purple-100 p-3 rounded-lg">
                 <Package className="h-6 w-6 text-purple-600" />
@@ -1014,8 +1169,10 @@ export default function OrderTrackingView() {
                             value={item.lotNumber}
                             onChange={(e) => {
                               const updatedItems = [...(newOrder.items || [])];
-                              const selectedLot = lots.find(lot => lot.harvest?.lotNumber === e.target.value) ||
-                                                multiLots.find(lot => lot.lotNumber === e.target.value);
+                              const selectedLot =
+                                lots.find(lot => lot.harvest?.lotNumber === e.target.value) ||
+                                multiLots.find(lot => lot.lotNumber === e.target.value) ||
+                                sharedLots.find(lot => lot.lotNumber === e.target.value);
                               updatedItems[index] = { 
                                 ...item, 
                                 lotNumber: e.target.value,
@@ -1026,16 +1183,27 @@ export default function OrderTrackingView() {
                             className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           >
                             <option value="">Select Lot</option>
-                            {lots.map((lot) => (
-                              <option key={lot.id} value={lot.harvest?.lotNumber || lot.id}>
-                                {lot.harvest?.lotNumber || `Lot ${lot.id}`} (Admin)
-                              </option>
-                            ))}
-                            {multiLots.map((lot) => (
-                              <option key={lot.id} value={lot.lotNumber}>
-                                {lot.lotNumber} (Multi-Lot)
-                              </option>
-                            ))}
+                            <optgroup label="Admin Lots">
+                              {lots.map((lot) => (
+                                <option key={lot.id} value={lot.harvest?.lotNumber || lot.id}>
+                                  {lot.harvest?.lotNumber || `Lot ${lot.id}`} (Admin)
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Multi-Lots (legacy)">
+                              {multiLots.map((lot) => (
+                                <option key={lot.id} value={lot.lotNumber}>
+                                  {lot.lotNumber} (Multi-Lot)
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Shared Lots (Production & Qualité)">
+                              {sharedLots.map((lot) => (
+                                <option key={lot.id} value={lot.lotNumber}>
+                                  {lot.lotNumber} ({lot.type === 'production' ? 'Production' : 'Qualité'})
+                                </option>
+                              ))}
+                            </optgroup>
                           </select>
                         </div>
 

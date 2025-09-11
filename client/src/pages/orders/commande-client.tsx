@@ -40,9 +40,11 @@ import {
   addCommunicationNotification
 } from '../../lib/firebaseService';
 import { initializeClientOrders } from '../../lib/initClientOrders';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { toast } from 'sonner';
+import { sharedLotService } from '../../lib/sharedLotService';
+import { saveQualityControlLot } from '../../lib/qualityControlService';
 
 const CommandeClient = () => {
   const [orders, setOrders] = useState<ClientOrder[]>([]);
@@ -400,7 +402,137 @@ const CommandeClient = () => {
           paymentStatus: 'pending'
         };
 
-        await addClientOrder(orderData);
+        // 1) Create the order
+        const createdOrder = await addClientOrder(orderData);
+
+        // 2) Create linked lots (production + quality) and archived QC lot
+        try {
+          const lotNumber = createdOrder.orderNumber;
+          const firstProduct = orderData.products[0];
+          const productName = firstProduct?.name || 'AVOCAT';
+          const today = new Date();
+          const dateISO = today.toISOString().slice(0, 10);
+
+          // Production lot (shared_lots)
+          const defaultProductionData = {
+            headerData: {
+              date: dateISO,
+              produit: productName || 'AVOCAT',
+              numeroLotClient: lotNumber,
+              typeProduction: 'CONVENTIONNEL'
+            },
+            calibreData: { 12: 0, 14: 0, 16: 0, 18: 0, 20: 0, 22: 0, 24: 0, 26: 0, 28: 0, 30: 0, 32: 0 },
+            nombrePalettes: '',
+            productionRows: Array.from({ length: 26 }, (_, index) => ({
+              numero: index + 1,
+              date: '',
+              heure: '',
+              calibre: '',
+              poidsBrut: '',
+              poidsNet: '',
+              numeroLotInterne: '',
+              variete: '',
+              nbrCP: '',
+              chambreFroide: '',
+              decision: ''
+            })),
+            visas: {
+              controleurQualite: '',
+              responsableQualite: '',
+              directeurOperationnel: ''
+            }
+          };
+
+          const productionLotId = await sharedLotService.addLot({
+            lotNumber,
+            status: 'brouillon',
+            type: 'production',
+            productionData: defaultProductionData
+          } as any);
+
+          // Quality card (shared_lots)
+          const defaultQualitySharedData = {
+            headerData: {
+              date: dateISO,
+              produit: productName || 'AVOCAT',
+              numeroLotClient: lotNumber
+            }
+          };
+          const qualitySharedLotId = await sharedLotService.addLot({
+            lotNumber,
+            status: 'brouillon',
+            type: 'quality',
+            qualityData: defaultQualitySharedData
+          } as any);
+
+          // Archived QC lot (quality_control_lots)
+          const qcFormData = {
+            date: dateISO,
+            product: productName,
+            variety: '',
+            campaign: `${today.getFullYear()}-${today.getFullYear() + 1}`,
+            clientLot: lotNumber,
+            shipmentNumber: '',
+            packagingType: '',
+            category: 'I',
+            exporterNumber: '106040',
+            frequency: '1 Carton/palette',
+            palettes: Array.from({ length: 5 }, () => ({ }))
+          };
+
+          const qcLotId = await saveQualityControlLot({
+            id: `lot-${Date.now()}`,
+            lotNumber,
+            formData: qcFormData as any,
+            images: [],
+            status: 'draft',
+            phase: 'controller',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          } as any);
+
+          // Link back to order
+          await updateDoc(doc(db, 'client-orders', createdOrder.id), {
+            linkedProductionLotId: productionLotId,
+            linkedQualitySharedLotId: qualitySharedLotId,
+            linkedQualityLotId: qcLotId,
+            updatedAt: serverTimestamp()
+          });
+
+          console.log('Linked lots created:', { productionLotId, qualitySharedLotId });
+        } catch (linkErr) {
+          console.error('Failed to create linked lots:', linkErr);
+          // Fallback to legacy 'lots' so QC has something to show
+          try {
+            const today = new Date();
+            await addDoc(collection(db, 'lots'), {
+              lotNumber: createdOrder.orderNumber,
+              formData: {
+                date: today.toISOString().slice(0, 10),
+                product: (orderData.products?.[0]?.name) || 'AVOCAT',
+                variety: '',
+                campaign: `${today.getFullYear()}-${today.getFullYear() + 1}`,
+                clientLot: createdOrder.orderNumber,
+                shipmentNumber: '',
+                packagingType: '',
+                category: 'I',
+                exporterNumber: '106040',
+                frequency: '1 Carton/palette',
+                palettes: Array.from({ length: 5 }, () => ({}))
+              },
+              images: [],
+              status: 'draft',
+              phase: 'controller',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+              syncedToFirebase: false
+            });
+            console.warn('Legacy QC lot created in "lots" collection as fallback');
+          } catch (legacyErr) {
+            console.error('Legacy QC fallback also failed:', legacyErr);
+          }
+        }
+
         toast.success("Order created successfully!");
         setShowNewOrderModal(false);
         

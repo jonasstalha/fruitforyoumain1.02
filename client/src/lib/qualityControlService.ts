@@ -703,7 +703,8 @@ export const saveQualityControlLot = async (lot: QualityControlLot): Promise<str
     // Validate form data structure
     const requiredFields = ['date', 'product', 'variety', 'campaign'];
     for (const field of requiredFields) {
-      if (!lot.formData[field as keyof QualityControlFormData]) {
+      const val = lot.formData[field as keyof QualityControlFormData] as any;
+      if (val === undefined || val === null) {
         throw new Error(`Required field missing: ${field}`);
       }
     }
@@ -712,6 +713,18 @@ export const saveQualityControlLot = async (lot: QualityControlLot): Promise<str
     const cleanData = removeUndefinedValues(lot);
 
     // Prepare comprehensive lot data for Firebase
+    // Safely handle createdAt which may be an invalid/empty string
+    const createdAtTimestamp = ((): Timestamp | ReturnType<typeof serverTimestamp> => {
+      try {
+        if (lot.createdAt && !isNaN(Date.parse(lot.createdAt))) {
+          return Timestamp.fromDate(new Date(lot.createdAt));
+        }
+      } catch (_) {
+        // ignore and fall back to serverTimestamp
+      }
+      return serverTimestamp();
+    })();
+
     const lotData = {
       ...cleanData,
       // Ensure all required fields are present
@@ -730,7 +743,7 @@ export const saveQualityControlLot = async (lot: QualityControlLot): Promise<str
       status: lot.status || 'draft',
       phase: lot.phase || 'controller',
       updatedAt: serverTimestamp(),
-      createdAt: lot.createdAt ? Timestamp.fromDate(new Date(lot.createdAt)) : serverTimestamp(),
+  createdAt: createdAtTimestamp,
       // Add Firebase-specific metadata
       firebaseMetadata: {
         lastSyncAt: serverTimestamp(),
