@@ -35,7 +35,7 @@ class SharedLotService {
   private unsubscribe: (() => void) | null = null;
 
   // Subscribe to real-time updates
-  subscribeToLots(callback: (lots: SharedLot[]) => void) {
+  subscribeToLots(callback: (lots: SharedLot[]) => void, onError?: (error: Error) => void) {
     this.listeners.push(callback);
 
     if (!this.unsubscribe) {
@@ -44,15 +44,21 @@ class SharedLotService {
         orderBy('createdAt', 'desc')
       );
 
-      this.unsubscribe = onSnapshot(lotsQuery, (snapshot) => {
-        const lots: SharedLot[] = [];
-        snapshot.forEach((doc) => {
-          lots.push({ id: doc.id, ...doc.data() } as SharedLot);
-        });
-
-        // Notify all listeners
-        this.listeners.forEach(listener => listener(lots));
-      });
+      this.unsubscribe = onSnapshot(
+        lotsQuery,
+        (snapshot) => {
+          const lots: SharedLot[] = [];
+          snapshot.forEach((doc) => {
+            lots.push({ id: doc.id, ...doc.data() } as SharedLot);
+          });
+          // Notify all listeners
+          this.listeners.forEach(listener => listener(lots));
+        },
+        (error) => {
+          console.error('shared_lots subscription error:', error);
+          if (onError) onError(error as unknown as Error);
+        }
+      );
     }
 
     return () => {

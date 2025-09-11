@@ -3,7 +3,8 @@ import {
   User,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  signInAnonymously
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
@@ -95,6 +96,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (isDemoUser && passwordMatch) {
         console.log("Demo user login successful");
+        // Ensure a Firebase-authenticated session so Firestore rules (isAuthenticated) pass
+        try {
+          await signInAnonymously(auth);
+        } catch (e) {
+          console.warn('Anonymous sign-in failed, continuing with demo user context only', e);
+        }
         // Create a demo user object
         const demoUser: CustomUser = {
           uid: `demo-${demoUsers[email].role}`,

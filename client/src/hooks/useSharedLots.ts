@@ -19,10 +19,17 @@ export const useSharedLots = (): UseSharedLotsReturn => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const unsubscribe = sharedLotService.subscribeToLots((updatedLots) => {
-      setLots(updatedLots);
-      setLoading(false);
-    });
+    const unsubscribe = sharedLotService.subscribeToLots(
+      (updatedLots) => {
+        setLots(updatedLots);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('useSharedLots subscribe error:', err);
+        setError(err.message || 'Permission or network error');
+        setLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, []);
