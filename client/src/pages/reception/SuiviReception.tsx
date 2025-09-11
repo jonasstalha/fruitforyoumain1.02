@@ -152,7 +152,13 @@ const SuiviReception: React.FC = () => {
 
   // Archive subscription
   useEffect(() => {
-    const unsub = receptionArchiveService.subscribe(setArchives);
+    const unsub = receptionArchiveService.subscribe(
+      setArchives,
+      (err) => {
+        console.error('Archives listener error:', err);
+        alert('Erreur permissions archives: ' + (err.message || 'permission-denied'));
+      }
+    );
     return () => unsub();
   }, []);
 

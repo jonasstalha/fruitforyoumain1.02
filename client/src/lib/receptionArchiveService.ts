@@ -22,13 +22,20 @@ export interface ReceptionArchive {
 const COLLECTION = 'reception_archives';
 
 export const receptionArchiveService = {
-  subscribe(cb: (items: ReceptionArchive[]) => void) {
+  subscribe(cb: (items: ReceptionArchive[]) => void, onError?: (e: Error) => void) {
     const q = query(collection(firestore, COLLECTION), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snap) => {
-      const items: ReceptionArchive[] = [];
-      snap.forEach((d) => items.push({ id: d.id, ...(d.data() as any) }));
-      cb(items);
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const items: ReceptionArchive[] = [];
+        snap.forEach((d) => items.push({ id: d.id, ...(d.data() as any) }));
+        cb(items);
+      },
+      (err) => {
+        console.error('reception_archives subscribe error:', err);
+        if (onError) onError(err as unknown as Error);
+      }
+    );
   },
 
   async add(item: Omit<ReceptionArchive, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
