@@ -259,6 +259,11 @@ export default function Sidebar() {
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
       path: "/new",
     },
+    {
+      title: 'Suivi réception',
+      icon: <ClipboardList className="h-5 w-5 mr-2" />,
+      path: "/suivi-reception",
+    },
   ];
 
   const personnelItems = [
