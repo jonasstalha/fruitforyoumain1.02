@@ -20,11 +20,12 @@ export interface SharedLot {
   status: string;
   createdAt: string;
   updatedAt: string;
-  type: 'quality' | 'production' | 'reception'; // Track which type of lot this is
+  type: 'quality' | 'production' | 'reception' | 'dechets'; // Track which type of lot this is
   // Store both quality and production data
   qualityData?: any;
   productionData?: any;
   receptionData?: any;
+  dechetData?: any;
 }
 
 // Firestore collection for shared lots

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { FilePlus, Package, Plus, RefreshCw, Save, Trash2, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import { useSharedLots } from '@/hooks/useSharedLots';
@@ -152,14 +154,34 @@ const SuiviReception: React.FC = () => {
 
   // Archive subscription
   useEffect(() => {
-    const unsub = receptionArchiveService.subscribe(
-      setArchives,
-      (err) => {
-        console.error('Archives listener error:', err);
-        alert('Erreur permissions archives: ' + (err.message || 'permission-denied'));
-      }
-    );
-    return () => unsub();
+    let unsubscribeArchives: (() => void) | undefined;
+    let unsubscribeAuth: (() => void) | undefined;
+
+    const startArchives = () => {
+      unsubscribeArchives = receptionArchiveService.subscribe(
+        setArchives,
+        (err) => {
+          console.error('Archives listener error:', err);
+          alert('Erreur permissions archives: ' + (err.message || 'permission-denied'));
+        }
+      );
+    };
+
+    if (auth.currentUser) {
+      startArchives();
+    } else {
+      unsubscribeAuth = onAuthStateChanged(auth, (u) => {
+        if (u) {
+          startArchives();
+          if (unsubscribeAuth) unsubscribeAuth();
+        }
+      });
+    }
+
+    return () => {
+      if (unsubscribeArchives) unsubscribeArchives();
+      if (unsubscribeAuth) unsubscribeAuth();
+    };
   }, []);
 
   const saveToArchive = async () => {

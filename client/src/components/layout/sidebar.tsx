@@ -255,6 +255,11 @@ export default function Sidebar() {
       path: "/reception",
     },
     {
+      title: 'Contrôle à la réception',
+      icon: <ClipboardList className="h-5 w-5 mr-2" />,
+      path: "/controle-reception",
+    },
+    {
       title: t('common.add') + " " + t('common.entry'),
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
       path: "/new",
@@ -263,6 +268,11 @@ export default function Sidebar() {
       title: 'Suivi réception',
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
       path: "/suivi-reception",
+    },
+    {
+      title: 'Suivi déchets',
+      icon: <ClipboardList className="h-5 w-5 mr-2" />,
+      path: "/suivi-dechets",
     },
   ];
 

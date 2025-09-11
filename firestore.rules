@@ -401,16 +401,28 @@ service cloud.firestore {
     // Reception archives (Suivi Réception historical forms)
     function isValidReceptionArchive() {
       let data = request.resource.data;
+      // Allow serverTimestamp() fields; do not strictly require non-null during create
       return data.lotNumber is string
-        && data.data is map
-        && data.createdAt != null
-        && data.updatedAt != null;
+        && data.data is map;
     }
 
     match /reception_archives/{archiveId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidReceptionArchive();
-      allow update: if isAuthenticated();
+  allow create: if isAuthenticated() && isValidReceptionArchive();
+  allow update: if isAuthenticated() && isValidReceptionArchive();
+      allow delete: if isAuthenticated();
+    }
+
+    // Déchets archives (Fiche Suivi Déchets)
+    function isValidDechetArchive() {
+      let data = request.resource.data;
+      return data.lotNumber is string && data.data is map;
+    }
+
+    match /dechet_archives/{archiveId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidDechetArchive();
+      allow update: if isAuthenticated() && isValidDechetArchive();
       allow delete: if isAuthenticated();
     }
 

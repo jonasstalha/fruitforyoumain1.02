@@ -64,6 +64,8 @@ import Archifage from "./pages/src/archifage";
 import { BoxDetail } from "./pages/src/pages/BoxDetail";
 import SuiviProduction from "./pages/production/SuiviProduction"
 import SuiviReception from "./pages/reception/SuiviReception"
+import SuiviDechets from "./pages/reception/SuiviDechets"
+import ControleReception from "./pages/reception/ControleReception"
 // Public routes that don't require authentication
 function PublicRoutes() {
   return (
@@ -141,6 +143,8 @@ function AuthenticatedRoutes() {
         {/* Client Orders */}
         <Route path="/suivi-production" component={SuiviProduction} />
   <Route path="/suivi-reception" component={SuiviReception} />
+  <Route path="/suivi-dechets" component={SuiviDechets} />
+  <Route path="/controle-reception" component={ControleReception} />
         {/* Client Orders */}
         {/* Maintenance Routes */}
         <Route path="/maintenance" component={Dashboard} />

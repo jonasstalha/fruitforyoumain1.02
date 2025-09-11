@@ -11,6 +11,7 @@ export interface UseSharedLotsReturn {
   getLot: (lotId: string) => SharedLot | undefined;
   getQualityLots: () => SharedLot[];
   getProductionLots: () => SharedLot[];
+  getDechetLots: () => SharedLot[];
 }
 
 export const useSharedLots = (): UseSharedLotsReturn => {
@@ -76,6 +77,10 @@ export const useSharedLots = (): UseSharedLotsReturn => {
     return lots.filter(lot => lot.type === 'production');
   };
 
+  const getDechetLots = (): SharedLot[] => {
+    return lots.filter(lot => lot.type === 'dechets');
+  };
+
   return {
     lots,
     loading,
@@ -85,6 +90,7 @@ export const useSharedLots = (): UseSharedLotsReturn => {
     deleteLot,
     getLot,
     getQualityLots,
-    getProductionLots
+  getProductionLots,
+  getDechetLots
   };
 };
