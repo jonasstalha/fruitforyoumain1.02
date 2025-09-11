@@ -205,6 +205,15 @@ const SuiviReception: React.FC = () => {
     await receptionArchiveService.delete(id);
   };
 
+  const saveWorking = async () => {
+    if (!currentLotId) {
+      alert('Aucun lot sélectionné');
+      return;
+    }
+    await updateLot(currentLotId, { receptionData: getCurrentForm() });
+    alert('Données enregistrées dans le lot courant');
+  };
+
   const generatePDF = async () => {
     const form = getCurrentForm();
     const lot = getCurrentLot();
@@ -317,8 +326,9 @@ const SuiviReception: React.FC = () => {
     y += 15;
 
     // Table headers with exact column structure from image
-    const headers = ['N° PALETTE', 'NR CAISSE', 'TARE PALETTE', 'POIDS BRUT (Kg)', 'POIDS NET (Kg)', 'VARIETE', 'N°DE LOT INTERN', 'DECISION'];
-    const colWidths = [24, 20, 24, 26, 24, 20, 28, 24]; // Adjusted to match image proportions
+  const headers = ['N° PALETTE', 'NR CAISSE', 'TARE PALETTE', 'POIDS BRUT (Kg)', 'POIDS NET (Kg)', 'VARIETE', 'N°DE LOT INTERN', 'DECISION'];
+  // Make DECISION narrower and increase other columns overall while keeping total width constant (190mm)
+  const colWidths = [25, 21, 25, 27, 25, 21, 29, 17];
 
     drawRect(margin, y, contentWidth, 12, colors.lightGreen);
     
@@ -574,28 +584,28 @@ const SuiviReception: React.FC = () => {
           <div className="border-2 border-gray-400 mb-4">
             {/* Table header */}
             <div className="flex bg-green-100 border-b border-gray-400">
-              <div className="w-20 p-2 border-r border-gray-400 text-center">
+              <div className="w-24 p-2 border-r border-gray-400 text-center">
                 <div className="text-xs font-bold">N° PALETTE</div>
               </div>
-              <div className="w-16 p-2 border-r border-gray-400 text-center">
+              <div className="w-20 p-2 border-r border-gray-400 text-center">
                 <div className="text-xs font-bold">NR CAISSE</div>
               </div>
-              <div className="w-20 p-2 border-r border-gray-400 text-center">
+              <div className="w-24 p-2 border-r border-gray-400 text-center">
                 <div className="text-xs font-bold leading-tight">TARE<br/>PALETTE</div>
               </div>
-              <div className="w-24 p-2 border-r border-gray-400 text-center">
+              <div className="w-28 p-2 border-r border-gray-400 text-center">
                 <div className="text-xs font-bold leading-tight">POIDS BRUT<br/>(Kg)</div>
               </div>
-              <div className="w-20 p-2 border-r border-gray-400 text-center">
+              <div className="w-24 p-2 border-r border-gray-400 text-center">
                 <div className="text-xs font-bold leading-tight">POIDS NET<br/>(Kg)</div>
               </div>
-              <div className="w-16 p-2 border-r border-gray-400 text-center">
+              <div className="w-20 p-2 border-r border-gray-400 text-center">
                 <div className="text-xs font-bold">VARIETE</div>
               </div>
-              <div className="w-24 p-2 border-r border-gray-400 text-center">
+              <div className="w-28 p-2 border-r border-gray-400 text-center">
                 <div className="text-xs font-bold leading-tight">N°DE LOT<br/>INTERN</div>
               </div>
-              <div className="flex-1 p-2 text-center">
+              <div className="w-24 p-2 text-center">
                 <div className="text-xs font-bold">DECISION</div>
               </div>
             </div>
@@ -603,7 +613,7 @@ const SuiviReception: React.FC = () => {
             {/* Table rows - exactly 20 rows */}
             {form.rows.map((row, index) => (
               <div key={index} className="flex border-b border-gray-400 hover:bg-gray-50">
-                <div className="w-20 border-r border-gray-400">
+                <div className="w-24 border-r border-gray-400">
                   <input
                     type="text"
                     value={row.numeroPalette}
@@ -615,7 +625,7 @@ const SuiviReception: React.FC = () => {
                     className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
                   />
                 </div>
-                <div className="w-16 border-r border-gray-400">
+                <div className="w-20 border-r border-gray-400">
                   <input
                     type="text"
                     value={row.nrCaisse}
@@ -627,7 +637,7 @@ const SuiviReception: React.FC = () => {
                     className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
                   />
                 </div>
-                <div className="w-20 border-r border-gray-400">
+                <div className="w-24 border-r border-gray-400">
                   <input
                     type="text"
                     value={row.tarePalette}
@@ -639,7 +649,7 @@ const SuiviReception: React.FC = () => {
                     className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
                   />
                 </div>
-                <div className="w-24 border-r border-gray-400">
+                <div className="w-28 border-r border-gray-400">
                   <input
                     type="number"
                     value={row.poidsBrut}
@@ -652,7 +662,7 @@ const SuiviReception: React.FC = () => {
                     step="0.01"
                   />
                 </div>
-                <div className="w-20 border-r border-gray-400">
+                <div className="w-24 border-r border-gray-400">
                   <input
                     type="number"
                     value={row.poidsNet}
@@ -665,7 +675,7 @@ const SuiviReception: React.FC = () => {
                     step="0.01"
                   />
                 </div>
-                <div className="w-16 border-r border-gray-400">
+                <div className="w-20 border-r border-gray-400">
                   <input
                     type="text"
                     value={row.variete}
@@ -677,7 +687,7 @@ const SuiviReception: React.FC = () => {
                     className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
                   />
                 </div>
-                <div className="w-24 border-r border-gray-400">
+                <div className="w-28 border-r border-gray-400">
                   <input
                     type="text"
                     value={row.numeroLotInterne}
@@ -689,7 +699,7 @@ const SuiviReception: React.FC = () => {
                     className="w-full p-1 border-0 text-xs text-center focus:outline-none focus:bg-blue-50"
                   />
                 </div>
-                <div className="flex-1">
+                <div className="w-24">
                   <input
                     type="text"
                     value={row.decision}
@@ -752,8 +762,11 @@ const SuiviReception: React.FC = () => {
             <button onClick={() => updateForm(defaultReceptionForm())} className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-all">
               <RefreshCw size={20} /> Réinitialiser
             </button>
+            <button onClick={saveWorking} className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-all">
+              <Save size={20} /> Enregistrer
+            </button>
             <button onClick={saveToArchive} disabled={isArchiving} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-all disabled:opacity-60">
-              <Save size={20} /> {isArchiving ? 'Archivage...' : 'Archiver'}
+              <FilePlus size={20} /> {isArchiving ? 'Archivage...' : 'Archiver'}
             </button>
             {selectedArchiveId && (
               <button onClick={updateArchiveFromEditor} className="flex items-center gap-2 bg-amber-600 text-white px-6 py-3 rounded-lg hover:bg-amber-700 transition-all">
@@ -765,9 +778,10 @@ const SuiviReception: React.FC = () => {
       </div>
       {/* Archived receptions */}
       <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-xl mt-6 p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-1">
           <h2 className="text-xl font-semibold">Archives - Réceptions</h2>
         </div>
+        <p className="text-sm text-gray-500 mb-4">Les archives sont des copies figées de vos formulaires (anciens rapports). Utilisez Archiver pour ajouter un nouveau rapport ici.</p>
         {archives.length === 0 ? (
           <div className="text-gray-500">Aucune archive pour le moment.</div>
         ) : (
