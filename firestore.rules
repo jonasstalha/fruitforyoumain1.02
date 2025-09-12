@@ -413,6 +413,26 @@ service cloud.firestore {
       allow delete: if isAuthenticated();
     }
 
+    // New Reception Controls collection (Controle à la Réception)
+    function isValidReceptionControl() {
+      let data = request.resource.data;
+      return data.lotNumber is string
+        && data.status is string
+        && (data.status in ['brouillon', 'en_cours', 'termine'])
+        && data.data is map
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (data.archived is bool || !("archived" in data))
+        && (data.archivedAt is timestamp || !("archivedAt" in data));
+    }
+
+    match /reception_controls/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidReceptionControl();
+      allow update: if isAuthenticated() && isValidReceptionControl();
+      allow delete: if isAuthenticated();
+    }
+
     // Déchets archives (Fiche Suivi Déchets)
     function isValidDechetArchive() {
       let data = request.resource.data;

@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import logoUrl from '../../../assets/icon.png';
 import { FilePlus, Package, Plus, RefreshCw, Save, Trash2, Copy } from 'lucide-react';
+import { archiveReceptionControl, deleteReceptionArchive, getReceptionArchives, saveReceptionControl } from '../../lib/receptionControlService';
 
 // Data model for avocado quality control
 interface QualityControlData {
@@ -99,6 +100,33 @@ const ControleReception: React.FC = () => {
   ]);
   const [currentLotId, setCurrentLotId] = useState<string>('1');
   const [archives, setArchives] = useState<QualityControlLot[]>([]);
+  const [loadingArchives, setLoadingArchives] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Load archives from Firebase on mount
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoadingArchives(true);
+        const items = await getReceptionArchives();
+        // Map to local QualityControlLot shape
+        const mapped: QualityControlLot[] = items.map((it) => ({
+          id: it.id,
+          lotNumber: it.lotNumber,
+          status: (it.status as any) || 'brouillon',
+          data: it.data as any,
+          createdAt: new Date(it.createdAt),
+          updatedAt: new Date(it.updatedAt),
+        }));
+        setArchives(mapped);
+      } catch (e) {
+        console.error('Failed to load archives', e);
+      } finally {
+        setLoadingArchives(false);
+      }
+    };
+    load();
+  }, []);
 
   const currentLot = useMemo(() => lots.find(l => l.id === currentLotId), [lots, currentLotId]);
 
@@ -166,17 +194,87 @@ const ControleReception: React.FC = () => {
     updateCurrentLot(defaultQualityControlData());
   };
 
-  const saveToArchive = () => {
+  const saveDraftToFirebase = async () => {
     if (!currentLot) return;
-    
-    const archiveLot = {
-      ...currentLot,
-      id: `archive_${Date.now()}`,
-      lotNumber: `Archive - ${currentLot.lotNumber}`,
-    };
-    
-    setArchives([...archives, archiveLot]);
-    alert('Fiche archivée avec succès');
+    try {
+      setSaving(true);
+      const id = await saveReceptionControl({
+        id: currentLot.id.startsWith('archive_') ? undefined : currentLot.id,
+        lotNumber: currentLot.lotNumber,
+        status: currentLot.status,
+        data: currentLot.data as any,
+      });
+      // Update local id if new
+      if (id !== currentLot.id) {
+        setLots(lots.map(l => l.id === currentLotId ? { ...l, id } : l));
+        setCurrentLotId(id);
+      }
+      alert('Brouillon enregistré dans Firebase');
+    } catch (e) {
+      console.error(e);
+      alert('Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveAllLotsToFirebase = async () => {
+    try {
+      setSaving(true);
+      const results = await Promise.allSettled(
+        lots.map((l) =>
+          saveReceptionControl({
+            id: l.id.startsWith('archive_') ? undefined : l.id,
+            lotNumber: l.lotNumber,
+            status: l.status,
+            data: l.data as any,
+          })
+        )
+      );
+      const newLots = [...lots];
+      results.forEach((res, idx) => {
+        if (res.status === 'fulfilled') {
+          const newId = res.value;
+          if (newId !== newLots[idx].id) {
+            newLots[idx] = { ...newLots[idx], id: newId };
+          }
+        }
+      });
+      setLots(newLots);
+      alert('Tous les lots ont été sauvegardés');
+    } catch (e) {
+      console.error(e);
+      alert('Erreur lors de la sauvegarde des lots');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveToArchive = async () => {
+    if (!currentLot) return;
+    try {
+      setSaving(true);
+      const id = await archiveReceptionControl({
+        id: currentLot.id.startsWith('archive_') ? undefined : currentLot.id,
+        lotNumber: `Archive - ${currentLot.lotNumber}`,
+        status: 'termine',
+        data: currentLot.data as any,
+      });
+      // Prepend to archives list
+      const archivedLot: QualityControlLot = {
+        ...currentLot,
+        id,
+        lotNumber: `Archive - ${currentLot.lotNumber}`,
+        updatedAt: new Date(),
+      };
+      setArchives([archivedLot, ...archives]);
+      alert('Fiche archivée sur Firebase');
+    } catch (e) {
+      console.error(e);
+      alert("Erreur lors de l'archivage");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const loadFromArchive = (archive: QualityControlLot) => {
@@ -185,9 +283,15 @@ const ControleReception: React.FC = () => {
     alert("Archive chargée dans l'éditeur");
   };
 
-  const deleteArchive = (archiveId: string) => {
+  const deleteArchive = async (archiveId: string) => {
     if (!confirm('Supprimer cette archive ?')) return;
-    setArchives(archives.filter(a => a.id !== archiveId));
+    try {
+      await deleteReceptionArchive(archiveId);
+      setArchives(archives.filter(a => a.id !== archiveId));
+    } catch (e) {
+      console.error(e);
+      alert('Suppression impossible');
+    }
   };
 
   const generatePDF = async () => {
@@ -372,14 +476,22 @@ const ControleReception: React.FC = () => {
       <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-xl">
         {/* Header Controls */}
         <div className="bg-white border-b p-4 shadow-sm rounded-t-xl sticky top-0 z-10">
-          <div className="flex flex-col gap-2 md:flex-row md:justify-between md:items-center mb-2">
+            <div className="flex flex-col gap-2 md:flex-row md:justify-between md:items-center mb-2">
             <div>
               <h1 className="text-2xl font-bold text-gray-800">Fiche de Contrôle à la Réception - Avocat</h1>
               <p className="text-sm text-gray-500">Créez, éditez et archivez vos contrôles de réception.</p>
             </div>
-            <button onClick={createNewLot} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+            <div className="flex gap-2">
+              <button onClick={createNewLot} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
               <Plus size={20} /> Nouveau Lot
-            </button>
+              </button>
+              <button onClick={saveDraftToFirebase} disabled={saving} className="flex items-center gap-2 bg-emerald-600 disabled:opacity-60 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors">
+                <Save size={18} /> {saving ? 'Sauvegarde...' : 'Enregistrer'}
+              </button>
+              <button onClick={saveAllLotsToFirebase} disabled={saving} className="flex items-center gap-2 bg-teal-600 disabled:opacity-60 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors">
+                <Save size={18} /> {saving ? 'Sauvegarde...' : 'Tout Enregistrer'}
+              </button>
+            </div>
           </div>
 
           {/* Tabs */}
@@ -956,7 +1068,9 @@ const ControleReception: React.FC = () => {
         </div>
         <p className="text-sm text-gray-500 mb-4">Les archives sont des copies figées de vos fiches de contrôle. Utilisez Archiver pour sauvegarder une fiche.</p>
         
-        {archives.length === 0 ? (
+        {loadingArchives ? (
+          <div className="text-gray-500 text-center py-8">Chargement des archives...</div>
+        ) : archives.length === 0 ? (
           <div className="text-gray-500 text-center py-8">Aucune archive pour le moment.</div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
