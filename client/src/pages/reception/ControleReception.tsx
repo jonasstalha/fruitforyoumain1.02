@@ -328,6 +328,22 @@ const ControleReception: React.FC = () => {
       columnStyles: { 0: { cellWidth: contentWidth / 2 }, 1: { cellWidth: contentWidth / 2 } },
     });
 
+    // Notes block
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 3,
+      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border, textColor: colors.text },
+      headStyles: { fillColor: colors.lightGreen as any, fontStyle: 'bold' },
+      margin: { left: margin, right: margin },
+      head: [[{ content: 'Note : en cas de présence', colSpan: 1 }]],
+      body: [[
+        {
+          content:
+            "• En cas d'un taux élevé (10%) des écarts il faut identifier le lot par une F.P et informer le R.Q",
+        },
+      ]],
+      theme: 'grid',
+    });
+
     // Footer with form ref/version
     const footerY = (doc as any).lastAutoTable.finalY + 8;
     doc.setFont('helvetica', 'normal');
