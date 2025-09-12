@@ -191,160 +191,151 @@ const ControleReception: React.FC = () => {
 
   const generatePDF = async () => {
     if (!currentLot) return;
-    
-    const jsPDF = (await import('jspdf')).default;
-    const doc = new jsPDF('p', 'mm', 'a4');
-    
-    const pageWidth = 210;
+
+    const jsPDFClass = (await import('jspdf')).default;
+    const autoTable = (await import('jspdf-autotable')).default as any;
+    const doc = new jsPDFClass({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
     const margin = 10;
+    const pageWidth = doc.internal.pageSize.getWidth();
     const contentWidth = pageWidth - margin * 2;
-    
-    // Colors
+
     const colors = {
       headerGreen: [101, 174, 73] as const,
-      lightGreen: [200, 230, 201] as const,
+      lightGreen: [226, 243, 224] as const,
       border: [0, 0, 0] as const,
       text: [0, 0, 0] as const,
-      white: [255, 255, 255] as const
     };
-    
-    const drawRect = (x: number, y: number, w: number, h: number, fill?: readonly number[], lineWidth = 0.5) => {
-      doc.setLineWidth(lineWidth);
-      if (fill) {
-        doc.setFillColor(fill[0], fill[1], fill[2]);
-      }
-      doc.setDrawColor(colors.border[0], colors.border[1], colors.border[2]);
-      doc.rect(x, y, w, h, fill ? 'FD' : 'S');
-    };
-    
-    const drawText = (
-      text: string,
-      x: number,
-      y: number,
-      size: number,
-      bold: boolean = false,
-      color: readonly [number, number, number] = colors.text
-    ) => {
-      doc.setTextColor(color[0], color[1], color[2]);
-      doc.setFont('helvetica', bold ? 'bold' : 'normal');
-      doc.setFontSize(size);
-      doc.text(text, x, y);
-    };
-    
-    let y = margin;
-    
-    // Header section
-    drawRect(margin, y, contentWidth, 20, colors.headerGreen);
-    drawText('Fiche de contrôle à la réception (avocat)', margin + contentWidth/2 - 60, y + 12, 14, true, colors.white);
-    
-    y += 25;
-    
-    // Document info
-    drawRect(margin, y, contentWidth, 15, colors.lightGreen);
-    drawText(`Réf : ${currentLot.data.header.ref}`, margin + 5, y + 6, 10);
-    drawText(`Version : ${currentLot.data.header.version}`, margin + 80, y + 6, 10);
-    drawText(`Date : ${currentLot.data.header.date}`, margin + 150, y + 6, 10);
-    drawText(`Date : ${currentLot.data.header.deliveryDate}`, margin + 5, y + 12, 10);
-    
-    y += 20;
-    
-    // Product info
-    drawRect(margin, y, contentWidth, 40, colors.white);
-    drawText(`Gamme de produit : ${currentLot.data.header.productRange}`, margin + 5, y + 8, 10);
-    drawText(`Prestataire : ${currentLot.data.header.provider}`, margin + 5, y + 16, 10);
-    drawText(`Protocole : ${currentLot.data.header.protocol}`, margin + 5, y + 24, 10);
-    
-    const typeText = currentLot.data.header.conventionnel ? '☑ CONVENTIONNEL' : '☐ CONVENTIONNEL';
-    const bioText = currentLot.data.header.bio ? '☑ BIO' : '☐ BIO';
-    drawText(typeText, margin + 5, y + 32, 10);
-    drawText(bioText, margin + 80, y + 32, 10);
-    
-    y += 45;
-    
-    // Reception details
-    const fields = [
-      [`N° de Bon de livraison : ${currentLot.data.header.deliveryBonNumber}`, `N° de bon de réception : ${currentLot.data.header.receptionBonNumber}`],
-      [`Heure de réception : ${currentLot.data.header.receptionTime}`, `États des caisses : ${currentLot.data.header.boxState}`],
-      [`Matricule : ${currentLot.data.header.matricule}`, `Variété : ${currentLot.data.header.variety}`],
-      [`Producteur : ${currentLot.data.header.producer}`, `Contrôle qualité états Camion : ${currentLot.data.header.truckQuality}`],
-      [`Nombre total de palettes : ${currentLot.data.header.totalPallets}`, `Poids NET : ${currentLot.data.header.netWeight}`],
-      [`N° de lot du produit : ${currentLot.data.header.productLotNumber}`, '']
-    ];
-    
-    fields.forEach(([left, right]) => {
-      drawRect(margin, y, contentWidth, 12, colors.white);
-      drawText(left, margin + 5, y + 8, 9);
-      if (right) drawText(right, margin + contentWidth/2 + 5, y + 8, 9);
-      y += 12;
+
+    const centerX = margin + contentWidth / 2;
+
+    // Header band
+    doc.setFillColor(...colors.headerGreen);
+    doc.rect(margin, margin, contentWidth, 16, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text('FICHE D\'AGRÉAGE À LA RÉCEPTION', centerX, margin + 11, { align: 'center' });
+
+    // Meta table (Ref, Version, Date)
+    autoTable(doc, {
+      startY: margin + 18,
+      styles: { font: 'helvetica', fontStyle: 'normal', fontSize: 9, cellPadding: 2, lineColor: colors.border, textColor: colors.text },
+      headStyles: { fillColor: colors.lightGreen as any, textColor: colors.text, fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: contentWidth / 3 }, 1: { cellWidth: contentWidth / 3 }, 2: { cellWidth: contentWidth / 3 } },
+      margin: { left: margin, right: margin },
+      head: [[
+        `Réf : ${currentLot.data.header.ref}`,
+        `Version : ${currentLot.data.header.version}`,
+        `Date doc : ${currentLot.data.header.date}`
+      ]],
+      body: [[`Date réception : ${currentLot.data.header.deliveryDate}`, '', '']],
+      theme: 'grid',
     });
-    
+
+    // Product info block
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 3,
+      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border, textColor: colors.text },
+      headStyles: { fillColor: colors.lightGreen as any, fontStyle: 'bold' },
+      margin: { left: margin, right: margin },
+      head: [[{ content: 'Informations produit', colSpan: 3, styles: { halign: 'center' } }]],
+      body: [
+        [{ content: `Gamme de produit : ${currentLot.data.header.productRange}`, colSpan: 3 }],
+        [{ content: `Prestataire : ${currentLot.data.header.provider}`, colSpan: 3 }],
+        [{ content: `Protocole : ${currentLot.data.header.protocol}`, colSpan: 3 }],
+        [
+          { content: `${currentLot.data.header.conventionnel ? '☑' : '☐'} CONVENTIONNEL`, styles: { cellWidth: contentWidth / 3 } },
+          { content: `${currentLot.data.header.bio ? '☑' : '☐'} BIO`, styles: { cellWidth: contentWidth / 3 } },
+          { content: '', styles: { cellWidth: contentWidth / 3 } }
+        ],
+      ],
+      theme: 'grid',
+    });
+
+    // Reception details (2 columns grid)
+    const rec = currentLot.data.header;
+    const detailsRows = [
+      [`N° Bon de livraison : ${rec.deliveryBonNumber}`, `N° Bon de réception : ${rec.receptionBonNumber}`],
+      [`Heure de réception : ${rec.receptionTime}`, `État des caisses : ${rec.boxState}`],
+      [`Matricule : ${rec.matricule}`, `Variété : ${rec.variety}`],
+      [`Producteur : ${rec.producer}`, `Qualité camion : ${rec.truckQuality}`],
+      [`Total palettes : ${rec.totalPallets}`, `Poids NET : ${rec.netWeight}`],
+      [`N° lot produit : ${rec.productLotNumber}`, ''],
+    ];
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 3,
+      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border },
+      headStyles: { fillColor: colors.lightGreen as any, fontStyle: 'bold' },
+      margin: { left: margin, right: margin },
+      head: [[{ content: 'Détails de la réception', colSpan: 2, styles: { halign: 'center' } }]],
+      body: detailsRows,
+      theme: 'grid',
+      columnStyles: { 0: { cellWidth: contentWidth / 2 }, 1: { cellWidth: contentWidth / 2 } },
+    });
+
     // Quality checks table
-    y += 5;
-    drawRect(margin, y, contentWidth, 12, colors.lightGreen);
-    drawText('Contrôles Qualité', margin + contentWidth/2 - 25, y + 8, 11, true);
-    
-    y += 12;
-    
-    // Table headers
-    const headers = ['Type de défaut', 'Nbr de fruits', 'Poids', '%', 'Max autorisé'];
-    const colWidths = [60, 30, 30, 20, 50];
-    
-    drawRect(margin, y, contentWidth, 10, colors.lightGreen);
-    let x = margin;
-    headers.forEach((header, i) => {
-      if (i > 0) doc.line(x, y, x, y + 10);
-      drawText(header, x + 2, y + 7, 8, true);
-      x += colWidths[i];
+    const qc = currentLot.data.qualityChecks;
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 3,
+      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border },
+      headStyles: { fillColor: colors.lightGreen as any, fontStyle: 'bold' },
+      margin: { left: margin, right: margin },
+      head: [[
+        'Type de défaut', 'Nbr de fruits', 'Poids', '%', 'Max autorisé'
+      ]],
+      body: [
+        ['Fruit avec trace de maladie', qc.diseaseTraces.count, qc.diseaseTraces.weight, qc.diseaseTraces.percentage, 'max 10u'],
+        ['Fruit murs', qc.ripeFruit.count, qc.ripeFruit.weight, qc.ripeFruit.percentage, 'max 0u'],
+        ['Fruit Terreux', qc.dirtyFruit.count, qc.dirtyFruit.weight, qc.dirtyFruit.percentage, 'max 8u'],
+        ['Épiderme et brûlures de soleil', qc.sunBurns.count, qc.sunBurns.weight, qc.sunBurns.percentage, 'max 6cm²'],
+        ['Fruit Sans pédoncule', qc.withoutStem.count, qc.withoutStem.weight, qc.withoutStem.percentage, ''],
+      ],
+      theme: 'grid',
+      columnStyles: {
+        0: { cellWidth: 70 },
+        1: { cellWidth: 26, halign: 'center' },
+        2: { cellWidth: 26, halign: 'center' },
+        3: { cellWidth: 16, halign: 'center' },
+        4: { cellWidth: contentWidth - (70 + 26 + 26 + 16) },
+      },
     });
-    
-    y += 10;
-    
-    // Quality check rows
-    const checks: [string, { count: string; weight: string; percentage: string }, string][] = [
-      ['Fruit avec trace de maladie', currentLot.data.qualityChecks.diseaseTraces, 'max 10u'],
-      ['Fruit murs', currentLot.data.qualityChecks.ripeFruit, 'max 0u'],
-      ['Fruit Terreux', currentLot.data.qualityChecks.dirtyFruit, 'max 8u'],
-      ['Épiderme et brûlures de soleil', currentLot.data.qualityChecks.sunBurns, 'max 6cm²'],
-      ['Fruit Sans pédoncule', currentLot.data.qualityChecks.withoutStem, '']
-    ];
-    
-    checks.forEach(([name, data, max]) => {
-      drawRect(margin, y, contentWidth, 10, colors.white);
-      let cx = margin;
-      
-      drawText(name, cx + 2, y + 7, 8);
-      cx += colWidths[0];
-      doc.line(cx, y, cx, y + 10);
-      
-      drawText(data.count, cx + 2, y + 7, 8);
-      cx += colWidths[1];
-      doc.line(cx, y, cx, y + 10);
-      
-      drawText(data.weight, cx + 2, y + 7, 8);
-      cx += colWidths[2];
-      doc.line(cx, y, cx, y + 10);
-      
-      drawText(data.percentage, cx + 2, y + 7, 8);
-      cx += colWidths[3];
-      doc.line(cx, y, cx, y + 10);
-      
-      drawText(max, cx + 2, y + 7, 8);
-      y += 10;
+
+    // Totals and qualitative checks
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 3,
+      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border },
+      headStyles: { fillColor: colors.lightGreen as any, fontStyle: 'bold' },
+      margin: { left: margin, right: margin },
+      body: [
+        [{ content: `Totalité des défauts % : ${currentLot.data.totalDefects}`, colSpan: 2 }],
+        [{ content: `Couleur : ${currentLot.data.color}`, colSpan: 1 }, { content: `Odeur : ${currentLot.data.odor}`, colSpan: 1 }],
+      ],
+      theme: 'grid',
+      columnStyles: { 0: { cellWidth: contentWidth / 2 }, 1: { cellWidth: contentWidth / 2 } },
     });
-    
-    // Total and final checks
-    y += 5;
-    drawRect(margin, y, contentWidth, 30, colors.white);
-    drawText(`Totalité des défauts % : ${currentLot.data.totalDefects}`, margin + 5, y + 8, 10);
-    drawText(`Couleur : ${currentLot.data.color}`, margin + 5, y + 16, 10);
-    drawText(`Odeur : ${currentLot.data.odor}`, margin + 5, y + 24, 10);
-    
-    y += 35;
-    drawText(`Décision + Action : ${currentLot.data.decision}`, margin + 5, y, 10);
-    
-    y += 15;
-    drawText(`Visa responsable de réception : ${currentLot.data.responsibleSignature}`, margin + 5, y, 10);
-    
+
+    // Decision and signature
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 3,
+      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border },
+      margin: { left: margin, right: margin },
+      body: [
+        [{ content: `Décision + Action : ${currentLot.data.decision}`, colSpan: 2, styles: { minCellHeight: 16 } }],
+        [{ content: `Visa responsable de réception : ${currentLot.data.responsibleSignature}`, colSpan: 2, styles: { minCellHeight: 10 } }],
+      ],
+      theme: 'grid',
+      columnStyles: { 0: { cellWidth: contentWidth / 2 }, 1: { cellWidth: contentWidth / 2 } },
+    });
+
+    // Footer with form ref/version
+    const footerY = (doc as any).lastAutoTable.finalY + 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text(`Formulaire: ${currentLot.data.header.ref}  |  Version: ${currentLot.data.header.version}`, margin, footerY);
+    doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, margin + contentWidth, footerY, { align: 'right' });
+
     const fileName = `Fiche_Controle_Reception_${currentLot.lotNumber.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
     doc.save(fileName);
   };
