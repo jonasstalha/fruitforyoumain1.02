@@ -355,16 +355,19 @@ const ControleReception: React.FC = () => {
     <div className="bg-gradient-to-b from-green-50 to-white min-h-screen p-4">
       <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-xl">
         {/* Header Controls */}
-        <div className="bg-white border-b p-4 shadow-sm rounded-t-xl">
-          <div className="flex justify-between items-center mb-4">
-            <h1 className="text-2xl font-bold text-gray-800">Fiche de Contrôle à la Réception - Avocat</h1>
-            <button onClick={createNewLot} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+        <div className="bg-white border-b p-4 shadow-sm rounded-t-xl sticky top-0 z-10">
+          <div className="flex flex-col gap-2 md:flex-row md:justify-between md:items-center mb-2">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">Fiche de Contrôle à la Réception - Avocat</h1>
+              <p className="text-sm text-gray-500">Créez, éditez et archivez vos contrôles de réception.</p>
+            </div>
+            <button onClick={createNewLot} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
               <Plus size={20} /> Nouveau Lot
             </button>
           </div>
           
           {/* Tabs */}
-          <div className="flex gap-2 overflow-x-auto pb-2">
+          <div className="flex gap-2 overflow-x-auto pb-2 pt-1">
             {lots.map((lot) => (
               <div key={lot.id} className="flex items-center bg-gray-100 rounded-lg overflow-hidden">
                 <button
@@ -399,18 +402,19 @@ const ControleReception: React.FC = () => {
         </div>
 
         {/* Form */}
-        <div className="p-6">
+        <div className="p-6 space-y-6">
           {/* Header Section */}
-          <div className="bg-green-600 text-white p-4 rounded-lg mb-6">
+          <div className="bg-green-600 text-white p-4 rounded-lg shadow-sm">
             <h2 className="text-xl font-bold text-center">SYSTÈME DE GESTION DE LA QUALITÉ</h2>
-            <div className="grid grid-cols-3 gap-4 mt-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 text-sm">
               <div>
                 <label className="block font-semibold mb-1">Réf :</label>
                 <input
                   type="text"
                   value={currentLot.data.header.ref}
                   onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, ref: e.target.value } })}
-                  className="w-full p-2 rounded text-black"
+                  placeholder="SMQ.ENR.10"
+                  className="w-full p-2 rounded text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/70"
                 />
               </div>
               <div>
@@ -419,7 +423,8 @@ const ControleReception: React.FC = () => {
                   type="text"
                   value={currentLot.data.header.version}
                   onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, version: e.target.value } })}
-                  className="w-full p-2 rounded text-black"
+                  placeholder="01"
+                  className="w-full p-2 rounded text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/70"
                 />
               </div>
               <div>
@@ -428,21 +433,24 @@ const ControleReception: React.FC = () => {
                   type="text"
                   value={currentLot.data.header.date}
                   onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, date: e.target.value } })}
-                  className="w-full p-2 rounded text-black"
+                  placeholder="1/07/2023"
+                  className="w-full p-2 rounded text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/70"
                 />
               </div>
             </div>
           </div>
 
           {/* Basic Info */}
-          <div className="grid grid-cols-2 gap-6 mb-6">
+          <div className="border rounded-lg p-4 bg-white shadow-sm">
+            <h3 className="text-base font-semibold text-neutral-700 mb-4">Informations de base</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-semibold mb-2">Date :</label>
               <input
                 type="date"
                 value={currentLot.data.header.deliveryDate}
                 onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, deliveryDate: e.target.value } })}
-                className="w-full p-2 border rounded"
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               />
             </div>
             <div>
@@ -451,7 +459,8 @@ const ControleReception: React.FC = () => {
                 type="text"
                 value={currentLot.data.header.productRange}
                 onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, productRange: e.target.value } })}
-                className="w-full p-2 border rounded"
+                placeholder="Avocat"
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               />
             </div>
             <div>
@@ -460,7 +469,8 @@ const ControleReception: React.FC = () => {
                 type="text"
                 value={currentLot.data.header.provider}
                 onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, provider: e.target.value } })}
-                className="w-full p-2 border rounded"
+                placeholder="Nom du prestataire"
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               />
             </div>
             <div>
@@ -469,13 +479,17 @@ const ControleReception: React.FC = () => {
                 type="text"
                 value={currentLot.data.header.protocol}
                 onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, protocol: e.target.value } })}
-                className="w-full p-2 border rounded"
+                placeholder="1 Caisse (23KG) / 12 palette"
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               />
+            </div>
             </div>
           </div>
 
           {/* Type */}
-          <div className="flex gap-6 mb-6">
+          <div className="border rounded-lg p-4 bg-white shadow-sm">
+            <h3 className="text-base font-semibold text-neutral-700 mb-3">Type</h3>
+            <div className="flex gap-6">
             <label className="flex items-center">
               <input
                 type="checkbox"
@@ -494,10 +508,13 @@ const ControleReception: React.FC = () => {
               />
               BIO
             </label>
+            </div>
           </div>
 
           {/* Reception Details */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="border rounded-lg p-4 bg-white shadow-sm">
+            <h3 className="text-base font-semibold text-neutral-700 mb-4">Détails de la réception</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
               { key: 'deliveryBonNumber', label: 'N° de Bon de livraison' },
               { key: 'receptionBonNumber', label: 'N° de bon de réception' },
@@ -513,18 +530,30 @@ const ControleReception: React.FC = () => {
             ].map(field => (
               <div key={field.key}>
                 <label className="block text-sm font-semibold mb-2">{field.label} :</label>
-                <input
-                  type="text"
-                  value={(currentLot.data.header as any)[field.key]}
-                  onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, [field.key]: e.target.value } as any })}
-                  className="w-full p-2 border rounded"
-                />
+                {field.key === 'receptionTime' ? (
+                  <input
+                    type="time"
+                    value={(currentLot.data.header as any)[field.key]}
+                    onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, [field.key]: e.target.value } as any })}
+                    step={60}
+                    className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={(currentLot.data.header as any)[field.key]}
+                    onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, [field.key]: e.target.value } as any })}
+                    placeholder={field.label}
+                    className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                )}
               </div>
             ))}
+            </div>
           </div>
 
           {/* Quality Checks */}
-          <div className="mb-6">
+          <div className="border rounded-lg p-4 bg-white shadow-sm">
             <h3 className="text-lg font-bold mb-4 bg-green-100 p-3 rounded">Contrôles Qualité</h3>
             <div className="space-y-4">
               {[
@@ -534,7 +563,7 @@ const ControleReception: React.FC = () => {
                 { key: 'sunBurns', label: 'Épiderme et brûlures de soleil', max: 'max 6cm²' },
                 { key: 'withoutStem', label: 'Fruit Sans pédoncule', max: '' },
               ].map((check: any) => (
-                <div key={check.key} className="grid grid-cols-5 gap-4 items-center bg-gray-50 p-3 rounded">
+                <div key={check.key} className="grid grid-cols-1 sm:grid-cols-5 gap-4 items-center bg-gray-50 p-3 rounded border">
                   <div className="font-medium">{check.label}</div>
                   <div>
                     <label className="block text-xs text-gray-600">Nbr de fruits</label>
@@ -550,7 +579,8 @@ const ControleReception: React.FC = () => {
                           }
                         }
                       })}
-                      className="w-full p-1 border rounded text-sm"
+                      placeholder="0"
+                      className="w-full p-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     />
                   </div>
                   <div>
@@ -567,7 +597,8 @@ const ControleReception: React.FC = () => {
                           }
                         }
                       })}
-                      className="w-full p-1 border rounded text-sm"
+                      placeholder="kg"
+                      className="w-full p-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     />
                   </div>
                   <div>
@@ -584,7 +615,8 @@ const ControleReception: React.FC = () => {
                           }
                         }
                       })}
-                      className="w-full p-1 border rounded text-sm"
+                      placeholder="0%"
+                      className="w-full p-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     />
                   </div>
                   <div className="text-sm text-gray-600">{check.max}</div>
@@ -594,14 +626,17 @@ const ControleReception: React.FC = () => {
           </div>
 
           {/* Final Checks */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="border rounded-lg p-4 bg-white shadow-sm">
+            <h3 className="text-base font-semibold text-neutral-700 mb-4">Vérifications finales</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold mb-2">Totalité des défauts % :</label>
               <input
                 type="text"
                 value={currentLot.data.totalDefects}
                 onChange={(e) => updateCurrentLot({ totalDefects: e.target.value })}
-                className="w-full p-2 border rounded"
+                placeholder="0%"
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               />
             </div>
             <div>
@@ -610,7 +645,8 @@ const ControleReception: React.FC = () => {
                 type="text"
                 value={currentLot.data.color}
                 onChange={(e) => updateCurrentLot({ color: e.target.value })}
-                className="w-full p-2 border rounded"
+                placeholder="C ou NC"
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               />
             </div>
             <div>
@@ -619,7 +655,8 @@ const ControleReception: React.FC = () => {
                 type="text"
                 value={currentLot.data.odor}
                 onChange={(e) => updateCurrentLot({ odor: e.target.value })}
-                className="w-full p-2 border rounded"
+                placeholder="C ou NC"
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               />
             </div>
             <div>
@@ -628,29 +665,32 @@ const ControleReception: React.FC = () => {
                 type="text"
                 value={currentLot.data.responsibleSignature}
                 onChange={(e) => updateCurrentLot({ responsibleSignature: e.target.value })}
-                className="w-full p-2 border rounded"
+                placeholder="Nom et signature"
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               />
+            </div>
             </div>
           </div>
 
-          <div>
+          <div className="border rounded-lg p-4 bg-white shadow-sm">
             <label className="block text-sm font-semibold mb-2">Décision + Action :</label>
             <textarea
               value={currentLot.data.decision}
               onChange={(e) => updateCurrentLot({ decision: e.target.value })}
-              className="w-full p-2 border rounded h-20"
+              placeholder="Décision prise et actions à mener..."
+              className="w-full p-3 border rounded h-24 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
 
           {/* Actions */}
-          <div className="flex flex-wrap gap-3 mt-6">
-            <button onClick={generatePDF} className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700">
+          <div className="flex flex-wrap gap-3 mt-2">
+            <button onClick={generatePDF} className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors">
               <FilePlus size={20} /> Générer PDF
             </button>
-            <button onClick={resetForm} className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700">
+            <button onClick={resetForm} className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors">
               <RefreshCw size={20} /> Réinitialiser
             </button>
-            <button onClick={saveToArchive} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
+            <button onClick={saveToArchive} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors">
               <Save size={20} /> Archiver
             </button>
           </div>
