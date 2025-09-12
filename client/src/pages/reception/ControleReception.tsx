@@ -197,7 +197,7 @@ const ControleReception: React.FC = () => {
     const autoTable = (await import('jspdf-autotable')).default as any;
     const doc = new jsPDFClass({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-    const margin = 10;
+  const margin = 8;
     const pageWidth = doc.internal.pageSize.getWidth();
     const contentWidth = pageWidth - margin * 2;
 
@@ -209,12 +209,12 @@ const ControleReception: React.FC = () => {
     };
 
     // Header frame like page
-    const headerH = 26;
+  const headerH = 34;
     const leftW = 22;
     const rightW = 40;
     const centerW = contentWidth - leftW - rightW;
     doc.setDrawColor(...colors.border);
-    doc.setLineWidth(0.6);
+  doc.setLineWidth(0.3);
     // Outer
     doc.rect(margin, margin, contentWidth, headerH);
     // Separators
@@ -223,20 +223,20 @@ const ControleReception: React.FC = () => {
     // Center title band
     const centerX0 = margin + leftW;
     doc.setFillColor(...colors.lime300);
-    const titleBandH = 10;
+  const titleBandH = 12;
     doc.rect(centerX0, margin, centerW, titleBandH, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
-    doc.setFontSize(10);
-    doc.text('Fiche de contrôle à la réception (avocat)', centerX0 + centerW / 2, margin + 6.2, { align: 'center' });
-    doc.text('SYSTEME DE GESTION DE LA QUALITE', centerX0 + centerW / 2, margin + titleBandH + 7.2, { align: 'center' });
+  doc.setFontSize(12);
+  doc.text('Fiche de contrôle à la réception (avocat)', centerX0 + centerW / 2, margin + 7.5, { align: 'center' });
+  doc.text('SYSTEME DE GESTION DE LA QUALITE', centerX0 + centerW / 2, margin + titleBandH + 8.5, { align: 'center' });
     // Right info rows
     const rightX0 = margin + leftW + centerW;
     const rowH = headerH / 3;
     doc.line(rightX0, margin + rowH, rightX0 + rightW, margin + rowH);
     doc.line(rightX0, margin + rowH * 2, rightX0 + rightW, margin + rowH * 2);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
+  doc.setFontSize(10);
     doc.text(`Réf : ${currentLot.data.header.ref}`, rightX0 + 2, margin + rowH - 2);
     doc.text(`Version : ${currentLot.data.header.version}`, rightX0 + 2, margin + rowH * 2 - 2);
     doc.text(`Date : ${currentLot.data.header.date}`, rightX0 + 2, margin + rowH * 3 - 2);
@@ -245,7 +245,7 @@ const ControleReception: React.FC = () => {
       const img = new Image();
       img.src = logoUrl as unknown as string;
       await new Promise((res, rej) => { (img.onload = res as any), (img.onerror = rej as any); });
-      const imgSize = 14;
+  const imgSize = 18;
       const imgX = margin + (leftW - imgSize) / 2;
       const imgY = margin + (headerH - imgSize) / 2;
       doc.addImage(img, 'PNG', imgX, imgY, imgSize, imgSize);
@@ -258,9 +258,10 @@ const ControleReception: React.FC = () => {
 
     autoTable(doc, {
       startY: margin + headerH + 2,
-      styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 1.2, lineColor: colors.border, lineWidth: 0.6, textColor: colors.text },
-      margin: { left: margin, right: margin },
+  styles: { font: 'helvetica', fontSize: 10, cellPadding: 2.0, lineColor: colors.border, lineWidth: 0.3, textColor: colors.text },
+  margin: { left: margin, right: margin, bottom: 32 },
       theme: 'grid',
+  tableWidth: contentWidth,
       body: [
         [
           { content: 'Date', styles: { fillColor: colors.lime300, fontStyle: 'bold' } },
@@ -324,24 +325,36 @@ const ControleReception: React.FC = () => {
         [ { content: 'Odeur C / NC', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: currentLot.data.odor || '', colSpan: 6 } ],
         [ { content: 'Décision + Action', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: currentLot.data.decision || '', colSpan: 6 } ],
       ],
-      columnStyles: { 0: { cellWidth: 45 } },
+  columnStyles: { 0: { cellWidth: 55 } },
     });
 
     // Notes and visa
     autoTable(doc, {
       startY: (doc as any).lastAutoTable.finalY + 1,
-      styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 1.2, lineColor: colors.border, lineWidth: 0.6 },
-      margin: { left: margin, right: margin },
+      styles: { font: 'helvetica', fontSize: 10, cellPadding: 2.0, lineColor: colors.border, lineWidth: 0.3 },
+      margin: { left: margin, right: margin, bottom: 32 },
       theme: 'grid',
       body: [
         [ { content: 'Note : en cas de présence', styles: { fontStyle: 'bold' } } ],
         [ { content: "• En cas d'un taux élevé (10%) des écarts il faut identifier le lot par une F.P et informer le R.Q" } ],
-        [ { content: `Visa responsable de réception: ${currentLot.data.responsibleSignature || ''}`, styles: { halign: 'center', fontStyle: 'bold' } } ],
       ],
     });
 
-    // Footer
-    const footerY = (doc as any).lastAutoTable.finalY + 6;
+    // Reserve ~3cm bottom area for signature
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const sigH = 30; // mm
+    const sigY = pageHeight - sigH - margin; // keep a small bottom margin
+    doc.setLineWidth(0.3);
+    doc.rect(margin, sigY, contentWidth, sigH);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('Visa responsable de réception', margin + 2, sigY + 6);
+    // Optional signature line
+    doc.setLineWidth(0.3);
+    doc.line(margin + 2, sigY + sigH - 10, margin + contentWidth - 2, sigY + sigH - 10);
+
+    // Footer labels just above signature box
+    const footerY = sigY - 3;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
