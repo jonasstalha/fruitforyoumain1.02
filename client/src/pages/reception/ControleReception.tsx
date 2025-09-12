@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import logoUrl from '../../../assets/icon.png';
 import { FilePlus, Package, Plus, RefreshCw, Save, Trash2, Copy } from 'lucide-react';
 
 // Data model for avocado quality control
@@ -201,151 +202,146 @@ const ControleReception: React.FC = () => {
     const contentWidth = pageWidth - margin * 2;
 
     const colors = {
-      headerGreen: [101, 174, 73] as const,
-      lightGreen: [226, 243, 224] as const,
+      lime300: [190, 242, 100] as const,
+      lime200: [217, 249, 157] as const,
       border: [0, 0, 0] as const,
       text: [0, 0, 0] as const,
     };
 
-    const centerX = margin + contentWidth / 2;
-
-    // Header band
-    doc.setFillColor(...colors.headerGreen);
-    doc.rect(margin, margin, contentWidth, 16, 'F');
-    doc.setTextColor(255, 255, 255);
+    // Header frame like page
+    const headerH = 26;
+    const leftW = 22;
+    const rightW = 40;
+    const centerW = contentWidth - leftW - rightW;
+    doc.setDrawColor(...colors.border);
+    doc.setLineWidth(0.6);
+    // Outer
+    doc.rect(margin, margin, contentWidth, headerH);
+    // Separators
+    doc.line(margin + leftW, margin, margin + leftW, margin + headerH);
+    doc.line(margin + leftW + centerW, margin, margin + leftW + centerW, margin + headerH);
+    // Center title band
+    const centerX0 = margin + leftW;
+    doc.setFillColor(...colors.lime300);
+    const titleBandH = 10;
+    doc.rect(centerX0, margin, centerW, titleBandH, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.text('FICHE D\'AGRÉAGE À LA RÉCEPTION', centerX, margin + 11, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text('Fiche de contrôle à la réception (avocat)', centerX0 + centerW / 2, margin + 6.2, { align: 'center' });
+    doc.text('SYSTEME DE GESTION DE LA QUALITE', centerX0 + centerW / 2, margin + titleBandH + 7.2, { align: 'center' });
+    // Right info rows
+    const rightX0 = margin + leftW + centerW;
+    const rowH = headerH / 3;
+    doc.line(rightX0, margin + rowH, rightX0 + rightW, margin + rowH);
+    doc.line(rightX0, margin + rowH * 2, rightX0 + rightW, margin + rowH * 2);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text(`Réf : ${currentLot.data.header.ref}`, rightX0 + 2, margin + rowH - 2);
+    doc.text(`Version : ${currentLot.data.header.version}`, rightX0 + 2, margin + rowH * 2 - 2);
+    doc.text(`Date : ${currentLot.data.header.date}`, rightX0 + 2, margin + rowH * 3 - 2);
+    // Logo
+    try {
+      const img = new Image();
+      img.src = logoUrl as unknown as string;
+      await new Promise((res, rej) => { (img.onload = res as any), (img.onerror = rej as any); });
+      const imgSize = 14;
+      const imgX = margin + (leftW - imgSize) / 2;
+      const imgY = margin + (headerH - imgSize) / 2;
+      doc.addImage(img, 'PNG', imgX, imgY, imgSize, imgSize);
+    } catch {}
 
-    // Meta table (Ref, Version, Date)
-    autoTable(doc, {
-      startY: margin + 18,
-      styles: { font: 'helvetica', fontStyle: 'normal', fontSize: 9, cellPadding: 2, lineColor: colors.border, textColor: colors.text },
-      headStyles: { fillColor: colors.lightGreen as any, textColor: colors.text, fontStyle: 'bold' },
-      columnStyles: { 0: { cellWidth: contentWidth / 3 }, 1: { cellWidth: contentWidth / 3 }, 2: { cellWidth: contentWidth / 3 } },
-      margin: { left: margin, right: margin },
-      head: [[
-        `Réf : ${currentLot.data.header.ref}`,
-        `Version : ${currentLot.data.header.version}`,
-        `Date doc : ${currentLot.data.header.date}`
-      ]],
-      body: [[`Date réception : ${currentLot.data.header.deliveryDate}`, '', '']],
-      theme: 'grid',
-    });
-
-    // Product info block
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 3,
-      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border, textColor: colors.text },
-      headStyles: { fillColor: colors.lightGreen as any, fontStyle: 'bold' },
-      margin: { left: margin, right: margin },
-      head: [[{ content: 'Informations produit', colSpan: 3, styles: { halign: 'center' } }]],
-      body: [
-        [{ content: `Gamme de produit : ${currentLot.data.header.productRange}`, colSpan: 3 }],
-        [{ content: `Prestataire : ${currentLot.data.header.provider}`, colSpan: 3 }],
-        [{ content: `Protocole : ${currentLot.data.header.protocol}`, colSpan: 3 }],
-        [
-          { content: `${currentLot.data.header.conventionnel ? '☑' : '☐'} CONVENTIONNEL`, styles: { cellWidth: contentWidth / 3 } },
-          { content: `${currentLot.data.header.bio ? '☑' : '☐'} BIO`, styles: { cellWidth: contentWidth / 3 } },
-          { content: '', styles: { cellWidth: contentWidth / 3 } }
-        ],
-      ],
-      theme: 'grid',
-    });
-
-    // Reception details (2 columns grid)
+    // Table body matching page
     const rec = currentLot.data.header;
-    const detailsRows = [
-      [`N° Bon de livraison : ${rec.deliveryBonNumber}`, `N° Bon de réception : ${rec.receptionBonNumber}`],
-      [`Heure de réception : ${rec.receptionTime}`, `État des caisses : ${rec.boxState}`],
-      [`Matricule : ${rec.matricule}`, `Variété : ${rec.variety}`],
-      [`Producteur : ${rec.producer}`, `Qualité camion : ${rec.truckQuality}`],
-      [`Total palettes : ${rec.totalPallets}`, `Poids NET : ${rec.netWeight}`],
-      [`N° lot produit : ${rec.productLotNumber}`, ''],
-    ];
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 3,
-      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border },
-      headStyles: { fillColor: colors.lightGreen as any, fontStyle: 'bold' },
-      margin: { left: margin, right: margin },
-      head: [[{ content: 'Détails de la réception', colSpan: 2, styles: { halign: 'center' } }]],
-      body: detailsRows,
-      theme: 'grid',
-      columnStyles: { 0: { cellWidth: contentWidth / 2 }, 1: { cellWidth: contentWidth / 2 } },
-    });
-
-    // Quality checks table
     const qc = currentLot.data.qualityChecks;
+    const checkbox = (b: boolean) => (b ? '☑' : '☐');
+
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 3,
-      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border },
-      headStyles: { fillColor: colors.lightGreen as any, fontStyle: 'bold' },
+      startY: margin + headerH + 2,
+      styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 1.2, lineColor: colors.border, lineWidth: 0.6, textColor: colors.text },
       margin: { left: margin, right: margin },
-      head: [[
-        'Type de défaut', 'Nbr de fruits', 'Poids', '%', 'Max autorisé'
-      ]],
+      theme: 'grid',
       body: [
-        ['Fruit avec trace de maladie', qc.diseaseTraces.count, qc.diseaseTraces.weight, qc.diseaseTraces.percentage, 'max 10u'],
-        ['Fruit murs', qc.ripeFruit.count, qc.ripeFruit.weight, qc.ripeFruit.percentage, 'max 0u'],
-        ['Fruit Terreux', qc.dirtyFruit.count, qc.dirtyFruit.weight, qc.dirtyFruit.percentage, 'max 8u'],
-        ['Épiderme et brûlures de soleil', qc.sunBurns.count, qc.sunBurns.weight, qc.sunBurns.percentage, 'max 6cm²'],
-        ['Fruit Sans pédoncule', qc.withoutStem.count, qc.withoutStem.weight, qc.withoutStem.percentage, ''],
+        [
+          { content: 'Date', styles: { fillColor: colors.lime300, fontStyle: 'bold' } },
+          { content: rec.deliveryDate || '' },
+          { content: 'Gamme de\nproduit :', styles: { fillColor: colors.lime300, fontStyle: 'bold' } },
+          { content: `${checkbox(rec.conventionnel)} Conventionnel\n${checkbox(rec.bio)} BIO` },
+          { content: 'Prestataire :', styles: { fillColor: colors.lime300, fontStyle: 'bold' } },
+          { content: rec.provider || '' },
+          { content: 'Protocole :\n1 Caisse (23KG) / 12palette', styles: { fillColor: colors.lime300, fontStyle: 'bold' } },
+        ],
+
+        [ { content: 'N° de Bon de livraison', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.deliveryBonNumber || '', colSpan: 6 } ],
+        [ { content: 'N° de bon de réception', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.receptionBonNumber || '', colSpan: 6 } ],
+        [ { content: 'Heure de réception', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.receptionTime || '', colSpan: 6 } ],
+        [ { content: 'Etats des caisses (C/NC)', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.boxState || '', colSpan: 6 } ],
+        [ { content: 'Matricule', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.matricule || '', colSpan: 6 } ],
+        [ { content: 'Variété', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.variety || '', colSpan: 6 } ],
+        [ { content: 'Producteur', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.producer || '', colSpan: 6 } ],
+        [ { content: 'Contrôle qualité de états Camion : Odeur ; corps étranger ; nettoyage. (C/NC)', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.truckQuality || '', colSpan: 6 } ],
+        [ { content: 'Nombre total de palettes', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.totalPallets || '', colSpan: 6 } ],
+        [ { content: 'Poids NET', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.netWeight || '', colSpan: 6 } ],
+        [ { content: 'N° de lot du produit', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: rec.productLotNumber || '', colSpan: 6 } ],
+
+        [ { content: 'Nbr Fruit avec trace de maladie', rowSpan: 2, styles: { fillColor: colors.lime300, fontStyle: 'bold' } },
+          { content: 'Nbr de fruits\n(max 10u)', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: 'Poids', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: '%', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: '', colSpan: 3 } ],
+        [ { content: qc.diseaseTraces.count || '' }, { content: qc.diseaseTraces.weight || '' }, { content: qc.diseaseTraces.percentage || '' }, { content: '', colSpan: 3 } ],
+
+        [ { content: 'Nbr fruit murs', rowSpan: 2, styles: { fillColor: colors.lime300, fontStyle: 'bold' } },
+          { content: 'Nbr de fruits\n(max 0u)', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: 'Poids', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: '%', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: '', colSpan: 3 } ],
+        [ { content: qc.ripeFruit.count || '' }, { content: qc.ripeFruit.weight || '' }, { content: qc.ripeFruit.percentage || '' }, { content: '', colSpan: 3 } ],
+
+        [ { content: 'Nbr fruit Terreux', rowSpan: 2, styles: { fillColor: colors.lime300, fontStyle: 'bold' } },
+          { content: 'Nbr de fruits\n(max 8u)', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: 'Poids', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: '%', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: '', colSpan: 3 } ],
+        [ { content: qc.dirtyFruit.count || '' }, { content: qc.dirtyFruit.weight || '' }, { content: qc.dirtyFruit.percentage || '' }, { content: '', colSpan: 3 } ],
+
+        [ { content: 'Epiderme et brulures de soleil', rowSpan: 2, styles: { fillColor: colors.lime300, fontStyle: 'bold' } },
+          { content: 'Nbr de fruits\n(max 6cm²)', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: 'Poids', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: '%', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: '', colSpan: 3 } ],
+        [ { content: qc.sunBurns.count || '' }, { content: qc.sunBurns.weight || '' }, { content: qc.sunBurns.percentage || '' }, { content: '', colSpan: 3 } ],
+
+        [ { content: 'Nbr fruit\nSans pédoncule', rowSpan: 2, styles: { fillColor: colors.lime300, fontStyle: 'bold' } },
+          { content: 'Nbr de fruits', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: 'Poids', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: '%', styles: { fillColor: colors.lime200, fontStyle: 'bold', halign: 'center' } },
+          { content: '', colSpan: 3 } ],
+        [ { content: qc.withoutStem.count || '' }, { content: qc.withoutStem.weight || '' }, { content: qc.withoutStem.percentage || '' }, { content: '', colSpan: 3 } ],
+
+        [ { content: 'Totalité des défauts %', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: currentLot.data.totalDefects || '', colSpan: 6 } ],
+        [ { content: 'Couleur C/NC', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: currentLot.data.color || '', colSpan: 6 } ],
+        [ { content: 'Odeur C / NC', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: currentLot.data.odor || '', colSpan: 6 } ],
+        [ { content: 'Décision + Action', styles: { fillColor: colors.lime300, fontStyle: 'bold' } }, { content: currentLot.data.decision || '', colSpan: 6 } ],
       ],
-      theme: 'grid',
-      columnStyles: {
-        0: { cellWidth: 70 },
-        1: { cellWidth: 26, halign: 'center' },
-        2: { cellWidth: 26, halign: 'center' },
-        3: { cellWidth: 16, halign: 'center' },
-        4: { cellWidth: contentWidth - (70 + 26 + 26 + 16) },
-      },
+      columnStyles: { 0: { cellWidth: 45 } },
     });
 
-    // Totals and qualitative checks
+    // Notes and visa
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 3,
-      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border },
-      headStyles: { fillColor: colors.lightGreen as any, fontStyle: 'bold' },
+      startY: (doc as any).lastAutoTable.finalY + 1,
+      styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 1.2, lineColor: colors.border, lineWidth: 0.6 },
       margin: { left: margin, right: margin },
+      theme: 'grid',
       body: [
-        [{ content: `Totalité des défauts % : ${currentLot.data.totalDefects}`, colSpan: 2 }],
-        [{ content: `Couleur : ${currentLot.data.color}`, colSpan: 1 }, { content: `Odeur : ${currentLot.data.odor}`, colSpan: 1 }],
+        [ { content: 'Note : en cas de présence', styles: { fontStyle: 'bold' } } ],
+        [ { content: "• En cas d'un taux élevé (10%) des écarts il faut identifier le lot par une F.P et informer le R.Q" } ],
+        [ { content: `Visa responsable de réception: ${currentLot.data.responsibleSignature || ''}`, styles: { halign: 'center', fontStyle: 'bold' } } ],
       ],
-      theme: 'grid',
-      columnStyles: { 0: { cellWidth: contentWidth / 2 }, 1: { cellWidth: contentWidth / 2 } },
     });
 
-    // Decision and signature
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 3,
-      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border },
-      margin: { left: margin, right: margin },
-      body: [
-        [{ content: `Décision + Action : ${currentLot.data.decision}`, colSpan: 2, styles: { minCellHeight: 16 } }],
-        [{ content: `Visa responsable de réception : ${currentLot.data.responsibleSignature}`, colSpan: 2, styles: { minCellHeight: 10 } }],
-      ],
-      theme: 'grid',
-      columnStyles: { 0: { cellWidth: contentWidth / 2 }, 1: { cellWidth: contentWidth / 2 } },
-    });
-
-    // Notes block
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 3,
-      styles: { fontSize: 9, cellPadding: 2, lineColor: colors.border, textColor: colors.text },
-      headStyles: { fillColor: colors.lightGreen as any, fontStyle: 'bold' },
-      margin: { left: margin, right: margin },
-      head: [[{ content: 'Note : en cas de présence', colSpan: 1 }]],
-      body: [[
-        {
-          content:
-            "• En cas d'un taux élevé (10%) des écarts il faut identifier le lot par une F.P et informer le R.Q",
-        },
-      ]],
-      theme: 'grid',
-    });
-
-    // Footer with form ref/version
-    const footerY = (doc as any).lastAutoTable.finalY + 8;
+    // Footer
+    const footerY = (doc as any).lastAutoTable.finalY + 6;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
@@ -416,9 +412,7 @@ const ControleReception: React.FC = () => {
               <div className="flex">
                 {/* Logo */}
                 <div className="w-20 h-16 border-r border-black flex items-center justify-center bg-white">
-                  <div className="w-12 h-12 bg-green-200 rounded-full flex items-center justify-center">
-                    <span className="text-green-800 font-bold text-xs">LOGO</span>
-                  </div>
+                  <img src={logoUrl} alt="Logo" className="max-h-12 max-w-16 object-contain" />
                 </div>
 
                 {/* Title */}
