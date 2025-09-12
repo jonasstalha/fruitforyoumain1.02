@@ -218,38 +218,6 @@ const ControleReception: React.FC = () => {
     }
   };
 
-  const saveAllLotsToFirebase = async () => {
-    try {
-      setSaving(true);
-      const results = await Promise.allSettled(
-        lots.map((l) =>
-          saveReceptionControl({
-            id: l.id.startsWith('archive_') ? undefined : l.id,
-            lotNumber: l.lotNumber,
-            status: l.status,
-            data: l.data as any,
-          })
-        )
-      );
-      const newLots = [...lots];
-      results.forEach((res, idx) => {
-        if (res.status === 'fulfilled') {
-          const newId = res.value;
-          if (newId !== newLots[idx].id) {
-            newLots[idx] = { ...newLots[idx], id: newId };
-          }
-        }
-      });
-      setLots(newLots);
-      alert('Tous les lots ont été sauvegardés');
-    } catch (e) {
-      console.error(e);
-      alert('Erreur lors de la sauvegarde des lots');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const saveToArchive = async () => {
     if (!currentLot) return;
     try {
@@ -487,9 +455,6 @@ const ControleReception: React.FC = () => {
               </button>
               <button onClick={saveDraftToFirebase} disabled={saving} className="flex items-center gap-2 bg-emerald-600 disabled:opacity-60 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors">
                 <Save size={18} /> {saving ? 'Sauvegarde...' : 'Enregistrer'}
-              </button>
-              <button onClick={saveAllLotsToFirebase} disabled={saving} className="flex items-center gap-2 bg-teal-600 disabled:opacity-60 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors">
-                <Save size={18} /> {saving ? 'Sauvegarde...' : 'Tout Enregistrer'}
               </button>
             </div>
           </div>
