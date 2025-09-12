@@ -356,7 +356,7 @@ const ControleReception: React.FC = () => {
               <Plus size={20} /> Nouveau Lot
             </button>
           </div>
-          
+
           {/* Tabs */}
           <div className="flex gap-2 overflow-x-auto pb-2 pt-1">
             {lots.map((lot) => (
@@ -392,298 +392,536 @@ const ControleReception: React.FC = () => {
           </div>
         </div>
 
-        {/* Form */}
-        <div className="p-6 space-y-6">
-          {/* Header Section */}
-          <div className="bg-green-600 text-white p-4 rounded-lg shadow-sm">
-            <h2 className="text-xl font-bold text-center">SYSTÈME DE GESTION DE LA QUALITÉ</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 text-sm">
-              <div>
-                <label className="block font-semibold mb-1">Réf :</label>
-                <input
-                  type="text"
-                  value={currentLot.data.header.ref}
-                  onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, ref: e.target.value } })}
-                  placeholder="SMQ.ENR.10"
-                  className="w-full p-2 rounded text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/70"
-                />
-              </div>
-              <div>
-                <label className="block font-semibold mb-1">Version :</label>
-                <input
-                  type="text"
-                  value={currentLot.data.header.version}
-                  onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, version: e.target.value } })}
-                  placeholder="01"
-                  className="w-full p-2 rounded text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/70"
-                />
-              </div>
-              <div>
-                <label className="block font-semibold mb-1">Date :</label>
-                <input
-                  type="text"
-                  value={currentLot.data.header.date}
-                  onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, date: e.target.value } })}
-                  placeholder="1/07/2023"
-                  className="w-full p-2 rounded text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/70"
-                />
-              </div>
-            </div>
-          </div>
+        {/* Form-like Printed Layout */}
+        <div className="p-6">
+          <div className="max-w-5xl mx-auto bg-white shadow-lg">
+            {/* Header */}
+            <div className="border-2 border-black">
+              <div className="flex">
+                {/* Logo */}
+                <div className="w-20 h-16 border-r border-black flex items-center justify-center bg-white">
+                  <div className="w-12 h-12 bg-green-200 rounded-full flex items-center justify-center">
+                    <span className="text-green-800 font-bold text-xs">LOGO</span>
+                  </div>
+                </div>
 
-          {/* Basic Info */}
-          <div className="border rounded-lg p-4 bg-white shadow-sm">
-            <h3 className="text-base font-semibold text-neutral-700 mb-4">Informations de base</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-semibold mb-2">Date :</label>
-              <input
-                type="date"
-                value={currentLot.data.header.deliveryDate}
-                onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, deliveryDate: e.target.value } })}
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Gamme de produit :</label>
-              <input
-                type="text"
-                value={currentLot.data.header.productRange}
-                onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, productRange: e.target.value } })}
-                placeholder="Avocat"
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Prestataire :</label>
-              <input
-                type="text"
-                value={currentLot.data.header.provider}
-                onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, provider: e.target.value } })}
-                placeholder="Nom du prestataire"
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Protocole :</label>
-              <input
-                type="text"
-                value={currentLot.data.header.protocol}
-                onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, protocol: e.target.value } })}
-                placeholder="1 Caisse (23KG) / 12 palette"
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
-            </div>
-          </div>
+                {/* Title */}
+                <div className="flex-1 border-r border-black">
+                  <div className="bg-lime-300 text-center py-1 border-b border-black font-bold text-sm">
+                    Fiche de contrôle à la réception (avocat)
+                  </div>
+                  <div className="text-center py-2 font-bold text-sm">
+                    SYSTEME DE GESTION DE LA QUALITE
+                  </div>
+                </div>
 
-          {/* Type */}
-          <div className="border rounded-lg p-4 bg-white shadow-sm">
-            <h3 className="text-base font-semibold text-neutral-700 mb-3">Type</h3>
-            <div className="flex gap-6">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={currentLot.data.header.conventionnel}
-                onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, conventionnel: e.target.checked } })}
-                className="mr-2"
-              />
-              CONVENTIONNEL
-            </label>
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={currentLot.data.header.bio}
-                onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, bio: e.target.checked } })}
-                className="mr-2"
-              />
-              BIO
-            </label>
+                {/* Info */}
+                <div className="w-40">
+                  <div className="border-b border-black p-1 text-xs">
+                    <label className="block font-semibold mb-0.5">Réf :</label>
+                    <input
+                      type="text"
+                      value={currentLot.data.header.ref}
+                      onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, ref: e.target.value } })}
+                      className="w-full text-xs border border-black rounded px-1 py-0.5"
+                    />
+                  </div>
+                  <div className="border-b border-black p-1 text-xs">
+                    <label className="block font-semibold mb-0.5">Version :</label>
+                    <input
+                      type="text"
+                      value={currentLot.data.header.version}
+                      onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, version: e.target.value } })}
+                      className="w-full text-xs border border-black rounded px-1 py-0.5"
+                    />
+                  </div>
+                  <div className="p-1 text-xs">
+                    <label className="block font-semibold mb-0.5">Date :</label>
+                    <input
+                      type="text"
+                      value={currentLot.data.header.date}
+                      onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, date: e.target.value } })}
+                      className="w-full text-xs border border-black rounded px-1 py-0.5"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Reception Details */}
-          <div className="border rounded-lg p-4 bg-white shadow-sm">
-            <h3 className="text-base font-semibold text-neutral-700 mb-4">Détails de la réception</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[
-              { key: 'deliveryBonNumber', label: 'N° de Bon de livraison' },
-              { key: 'receptionBonNumber', label: 'N° de bon de réception' },
-              { key: 'receptionTime', label: 'Heure de réception' },
-              { key: 'boxState', label: 'États des caisses (C/NC)' },
-              { key: 'matricule', label: 'Matricule' },
-              { key: 'variety', label: 'Variété' },
-              { key: 'producer', label: 'Producteur' },
-              { key: 'truckQuality', label: 'Contrôle qualité états Camion' },
-              { key: 'totalPallets', label: 'Nombre total de palettes' },
-              { key: 'netWeight', label: 'Poids NET' },
-              { key: 'productLotNumber', label: 'N° de lot du produit' },
-            ].map(field => (
-              <div key={field.key}>
-                <label className="block text-sm font-semibold mb-2">{field.label} :</label>
-                {field.key === 'receptionTime' ? (
-                  <input
-                    type="time"
-                    value={(currentLot.data.header as any)[field.key]}
-                    onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, [field.key]: e.target.value } as any })}
-                    step={60}
-                    className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  />
-                ) : (
+            {/* Form Content */}
+            <div className="border-x-2 border-b-2 border-black">
+              <table className="w-full text-xs border-collapse">
+                <tbody>
+                  {/* Date Row */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 w-32 font-bold">Date</td>
+                    <td className="border border-black p-1 w-24">
+                      <input
+                        type="date"
+                        value={currentLot.data.header.deliveryDate}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, deliveryDate: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">
+                      Gamme de
+                      <br />
+                      produit :
+                    </td>
+                    <td className="border border-black p-1">
+                      <div className="mb-1">
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={currentLot.data.header.conventionnel}
+                            onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, conventionnel: e.target.checked } })}
+                            className="text-xs"
+                          />
+                          <span>Conventionnel</span>
+                        </label>
+                      </div>
+                      <div>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={currentLot.data.header.bio}
+                            onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, bio: e.target.checked } })}
+                            className="text-xs"
+                          />
+                          <span>BIO</span>
+                        </label>
+                      </div>
+                    </td>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Prestataire :</td>
+                    <td className="border border-black p-1 w-48">
+                      <input
+                        type="text"
+                        value={currentLot.data.header.provider}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, provider: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">
+                      Protocole :
+                      <br />
+                      1 Caisse (23KG) / 12palette
+                    </td>
+                  </tr>
+
+                  {/* N° de Bon de livraison */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">N° de Bon de livraison</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.header.deliveryBonNumber}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, deliveryBonNumber: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* N° de bon de réception */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">N° de bon de réception</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.header.receptionBonNumber}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, receptionBonNumber: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Heure de réception */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Heure de réception</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="time"
+                        step={60}
+                        value={currentLot.data.header.receptionTime}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, receptionTime: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Etats des caisses */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Etats des caisses (C/NC)</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.header.boxState}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, boxState: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Matricule */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Matricule</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.header.matricule}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, matricule: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Variété */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Variété</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.header.variety}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, variety: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Producteur */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Producteur</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.header.producer}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, producer: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Contrôle qualité camion */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Contrôle qualité de états Camion : Odeur ; corps étranger ; nettoyage. (C/NC)</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.header.truckQuality}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, truckQuality: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Nombre total de palettes */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Nombre total de palettes</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.header.totalPallets}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, totalPallets: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Poids NET */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Poids NET</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.header.netWeight}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, netWeight: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* N° de lot du produit */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">N° de lot du produit</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.header.productLotNumber}
+                        onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, productLotNumber: e.target.value } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Quality rows */}
+                  {/* Fruit avec trace de maladie */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold" rowSpan={2}>Nbr Fruit avec trace de maladie</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">Nbr de fruits<br/>(max 10u)</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">Poids</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">%</td>
+                    <td className="border border-black p-1" colSpan={3}></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.diseaseTraces.count}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, diseaseTraces: { ...currentLot.data.qualityChecks.diseaseTraces, count: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.diseaseTraces.weight}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, diseaseTraces: { ...currentLot.data.qualityChecks.diseaseTraces, weight: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.diseaseTraces.percentage}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, diseaseTraces: { ...currentLot.data.qualityChecks.diseaseTraces, percentage: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1" colSpan={3}></td>
+                  </tr>
+
+                  {/* Nbr fruit murs */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold" rowSpan={2}>Nbr fruit murs</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">Nbr de fruits<br/>(max 0u)</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">Poids</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">%</td>
+                    <td className="border border-black p-1" colSpan={3}></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.ripeFruit.count}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, ripeFruit: { ...currentLot.data.qualityChecks.ripeFruit, count: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.ripeFruit.weight}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, ripeFruit: { ...currentLot.data.qualityChecks.ripeFruit, weight: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.ripeFruit.percentage}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, ripeFruit: { ...currentLot.data.qualityChecks.ripeFruit, percentage: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1" colSpan={3}></td>
+                  </tr>
+
+                  {/* Nbr fruit Terreux */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold" rowSpan={2}>Nbr fruit Terreux</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">Nbr de fruits<br/>(max 8u)</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">Poids</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">%</td>
+                    <td className="border border-black p-1" colSpan={3}></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.dirtyFruit.count}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, dirtyFruit: { ...currentLot.data.qualityChecks.dirtyFruit, count: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.dirtyFruit.weight}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, dirtyFruit: { ...currentLot.data.qualityChecks.dirtyFruit, weight: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.dirtyFruit.percentage}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, dirtyFruit: { ...currentLot.data.qualityChecks.dirtyFruit, percentage: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1" colSpan={3}></td>
+                  </tr>
+
+                  {/* Epiderme et brulures de soleil */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold" rowSpan={2}>Epiderme et brulures de soleil</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">Nbr de fruits<br/>(max 6cm²)</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">Poids</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">%</td>
+                    <td className="border border-black p-1" colSpan={3}></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.sunBurns.count}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, sunBurns: { ...currentLot.data.qualityChecks.sunBurns, count: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.sunBurns.weight}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, sunBurns: { ...currentLot.data.qualityChecks.sunBurns, weight: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.sunBurns.percentage}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, sunBurns: { ...currentLot.data.qualityChecks.sunBurns, percentage: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1" colSpan={3}></td>
+                  </tr>
+
+                  {/* Nbr fruit Sans pédoncule */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold" rowSpan={2}>Nbr fruit
+                      <br />
+                      Sans pédoncule
+                    </td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">Nbr de fruits</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">Poids</td>
+                    <td className="bg-lime-200 border border-black p-1 font-bold text-center">%</td>
+                    <td className="border border-black p-1" colSpan={3}></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.withoutStem.count}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, withoutStem: { ...currentLot.data.qualityChecks.withoutStem, count: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.withoutStem.weight}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, withoutStem: { ...currentLot.data.qualityChecks.withoutStem, weight: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1">
+                      <input
+                        type="text"
+                        value={currentLot.data.qualityChecks.withoutStem.percentage}
+                        onChange={(e) => updateCurrentLot({ qualityChecks: { ...currentLot.data.qualityChecks, withoutStem: { ...currentLot.data.qualityChecks.withoutStem, percentage: e.target.value } } })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                    <td className="border border-black p-1" colSpan={3}></td>
+                  </tr>
+
+                  {/* Totalité des défauts % */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Totalité des défauts %</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.totalDefects}
+                        onChange={(e) => updateCurrentLot({ totalDefects: e.target.value })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Couleur C/NC */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Couleur C/NC</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.color}
+                        onChange={(e) => updateCurrentLot({ color: e.target.value })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Odeur C / NC */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Odeur C / NC</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.odor}
+                        onChange={(e) => updateCurrentLot({ odor: e.target.value })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+
+                  {/* Décision + Action */}
+                  <tr>
+                    <td className="bg-lime-300 border border-black p-1 font-bold">Décision + Action</td>
+                    <td className="border border-black p-1" colSpan={6}>
+                      <input
+                        type="text"
+                        value={currentLot.data.decision}
+                        onChange={(e) => updateCurrentLot({ decision: e.target.value })}
+                        className="w-full text-xs border-none outline-none"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Footer notes */}
+              <div className="p-2 text-xs border-t border-black">
+                <p className="font-semibold">Note : en cas de présence :</p>
+                <p>• En cas d'un taux élevé (10%) des écarts il faut identifier le lot par une F.P et informer le R.Q</p>
+              </div>
+
+              <div className="text-center p-4 border-t border-black">
+                <p className="font-bold text-sm">Visa responsable de réception</p>
+                <div className="mt-1">
                   <input
                     type="text"
-                    value={(currentLot.data.header as any)[field.key]}
-                    onChange={(e) => updateCurrentLot({ header: { ...currentLot.data.header, [field.key]: e.target.value } as any })}
-                    placeholder={field.label}
-                    className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    value={currentLot.data.responsibleSignature}
+                    onChange={(e) => updateCurrentLot({ responsibleSignature: e.target.value })}
+                    className="w-64 text-xs border border-black rounded px-2 py-1"
+                    placeholder="Nom et signature"
                   />
-                )}
-              </div>
-            ))}
-            </div>
-          </div>
-
-          {/* Quality Checks */}
-          <div className="border rounded-lg p-4 bg-white shadow-sm">
-            <h3 className="text-lg font-bold mb-4 bg-green-100 p-3 rounded">Contrôles Qualité</h3>
-            <div className="space-y-4">
-              {[
-                { key: 'diseaseTraces', label: 'Fruit avec trace de maladie', max: 'max 10u' },
-                { key: 'ripeFruit', label: 'Fruit murs', max: 'max 0u' },
-                { key: 'dirtyFruit', label: 'Fruit Terreux', max: 'max 8u' },
-                { key: 'sunBurns', label: 'Épiderme et brûlures de soleil', max: 'max 6cm²' },
-                { key: 'withoutStem', label: 'Fruit Sans pédoncule', max: '' },
-              ].map((check: any) => (
-                <div key={check.key} className="grid grid-cols-1 sm:grid-cols-5 gap-4 items-center bg-gray-50 p-3 rounded border">
-                  <div className="font-medium">{check.label}</div>
-                  <div>
-                    <label className="block text-xs text-gray-600">Nbr de fruits</label>
-                    <input
-                      type="text"
-                      value={(currentLot.data.qualityChecks as any)[check.key].count}
-                      onChange={(e) => updateCurrentLot({
-                        qualityChecks: {
-                          ...currentLot.data.qualityChecks,
-                          [check.key]: {
-                            ...(currentLot.data.qualityChecks as any)[check.key],
-                            count: e.target.value
-                          }
-                        }
-                      })}
-                      placeholder="0"
-                      className="w-full p-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600">Poids</label>
-                    <input
-                      type="text"
-                      value={(currentLot.data.qualityChecks as any)[check.key].weight}
-                      onChange={(e) => updateCurrentLot({
-                        qualityChecks: {
-                          ...currentLot.data.qualityChecks,
-                          [check.key]: {
-                            ...(currentLot.data.qualityChecks as any)[check.key],
-                            weight: e.target.value
-                          }
-                        }
-                      })}
-                      placeholder="kg"
-                      className="w-full p-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600">%</label>
-                    <input
-                      type="text"
-                      value={(currentLot.data.qualityChecks as any)[check.key].percentage}
-                      onChange={(e) => updateCurrentLot({
-                        qualityChecks: {
-                          ...currentLot.data.qualityChecks,
-                          [check.key]: {
-                            ...(currentLot.data.qualityChecks as any)[check.key],
-                            percentage: e.target.value
-                          }
-                        }
-                      })}
-                      placeholder="0%"
-                      className="w-full p-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
-                  <div className="text-sm text-gray-600">{check.max}</div>
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
 
-          {/* Final Checks */}
-          <div className="border rounded-lg p-4 bg-white shadow-sm">
-            <h3 className="text-base font-semibold text-neutral-700 mb-4">Vérifications finales</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold mb-2">Totalité des défauts % :</label>
-              <input
-                type="text"
-                value={currentLot.data.totalDefects}
-                onChange={(e) => updateCurrentLot({ totalDefects: e.target.value })}
-                placeholder="0%"
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              />
+            {/* Actions */}
+            <div className="p-4 text-center flex flex-wrap gap-3 justify-center">
+              <button onClick={generatePDF} className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors">
+                <FilePlus size={20} /> Générer PDF
+              </button>
+              <button onClick={resetForm} className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors">
+                <RefreshCw size={20} /> Réinitialiser
+              </button>
+              <button onClick={saveToArchive} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors">
+                <Save size={20} /> Archiver
+              </button>
             </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Couleur C/NC :</label>
-              <input
-                type="text"
-                value={currentLot.data.color}
-                onChange={(e) => updateCurrentLot({ color: e.target.value })}
-                placeholder="C ou NC"
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Odeur C / NC :</label>
-              <input
-                type="text"
-                value={currentLot.data.odor}
-                onChange={(e) => updateCurrentLot({ odor: e.target.value })}
-                placeholder="C ou NC"
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Visa responsable de réception :</label>
-              <input
-                type="text"
-                value={currentLot.data.responsibleSignature}
-                onChange={(e) => updateCurrentLot({ responsibleSignature: e.target.value })}
-                placeholder="Nom et signature"
-                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
-            </div>
-          </div>
-
-          <div className="border rounded-lg p-4 bg-white shadow-sm">
-            <label className="block text-sm font-semibold mb-2">Décision + Action :</label>
-            <textarea
-              value={currentLot.data.decision}
-              onChange={(e) => updateCurrentLot({ decision: e.target.value })}
-              placeholder="Décision prise et actions à mener..."
-              className="w-full p-3 border rounded h-24 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex flex-wrap gap-3 mt-2">
-            <button onClick={generatePDF} className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors">
-              <FilePlus size={20} /> Générer PDF
-            </button>
-            <button onClick={resetForm} className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors">
-              <RefreshCw size={20} /> Réinitialiser
-            </button>
-            <button onClick={saveToArchive} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors">
-              <Save size={20} /> Archiver
-            </button>
           </div>
         </div>
       </div>
