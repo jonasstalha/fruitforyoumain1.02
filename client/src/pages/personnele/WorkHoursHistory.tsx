@@ -40,8 +40,10 @@ interface WorkSchedule {
   id: string;
   employeeId: string;
   date: string;
-  startTime: string;
-  endTime: string;
+  entryTime: string;
+  exitTime: string;
+  pauseDuration: number;
+  machineCollapseDuration: number;
   hoursWorked: number;
   salary: number;
   status: 'present' | 'absent' | 'late' | 'overtime';
@@ -101,14 +103,19 @@ const WorkHoursHistory: React.FC = () => {
     return () => unsubscribeEmployees();
   }, []);
 
-  // Listen to schedules with date range filter
+  // Listen to schedules with date range filter - FETCH ALL SAVED RECORDS
   useEffect(() => {
+    console.log('🔄 FETCHING WORK SCHEDULES from Firebase...', {
+      dateRange,
+      collection: 'work_schedules'
+    });
+    
     const unsubscribeSchedules = onSnapshot(
       query(
         collection(db, 'work_schedules'),
         where('date', '>=', dateRange.start),
         where('date', '<=', dateRange.end),
-        where('checked', '==', true),
+        // Removed checked filter to show ALL saved salary data
         orderBy('date', 'desc')
       ),
       (snapshot) => {
@@ -116,7 +123,28 @@ const WorkHoursHistory: React.FC = () => {
           id: doc.id,
           ...doc.data()
         })) as WorkSchedule[];
+        
+        console.log('📊 FETCHED SCHEDULES DATA:', {
+          totalRecords: schedulesData.length,
+          dateRange,
+          sampleRecord: schedulesData[0] || 'No records found',
+          allFields: schedulesData.length > 0 ? Object.keys(schedulesData[0]) : []
+        });
+        
+        // Validate data integrity
+        schedulesData.forEach(schedule => {
+          if (!schedule.employeeId || !schedule.date) {
+            console.error('⚠️ INVALID SCHEDULE DATA:', schedule);
+          }
+          if (schedule.hoursWorked < 0 || schedule.salary < 0) {
+            console.error('⚠️ NEGATIVE VALUES DETECTED:', schedule);
+          }
+        });
+        
         setSchedules(schedulesData);
+      },
+      (error) => {
+        console.error('❌ FIREBASE FETCH ERROR:', error);
       }
     );
 
@@ -125,8 +153,25 @@ const WorkHoursHistory: React.FC = () => {
 
   // Process employee work summaries
   const employeeWorkSummaries = useMemo(() => {
+    console.log('📈 PROCESSING EMPLOYEE SUMMARIES...', {
+      totalEmployees: employees.length,
+      totalSchedules: schedules.length
+    });
+    
     const summaries: EmployeeWorkSummary[] = employees.map(employee => {
       const employeeSchedules = schedules.filter(s => s.employeeId === employee.id);
+      
+      console.log(`👤 Processing ${employee.firstName} ${employee.lastName}:`, {
+        employeeId: employee.id,
+        scheduleCount: employeeSchedules.length,
+        schedules: employeeSchedules.map(s => ({
+          date: s.date,
+          hours: s.hoursWorked,
+          salary: s.salary,
+          pause: s.pauseDuration,
+          machine: s.machineCollapseDuration
+        }))
+      });
       
       const totalHours = employeeSchedules.reduce((sum, s) => sum + (s.hoursWorked || 0), 0);
       const totalSalary = employeeSchedules.reduce((sum, s) => sum + (s.salary || 0), 0);
@@ -241,7 +286,7 @@ const WorkHoursHistory: React.FC = () => {
 
   // Export detailed report
   const exportDetailedReport = () => {
-    let csvData = 'Employee,Department,Position,Date,Start Time,End Time,Hours Worked,Salary (MAD),Status,Notes\n';
+    let csvData = 'Employee,Department,Position,Date,Entry Time,Exit Time,Pause (min),Machine Breakdown (min),Hours Worked,Salary (MAD),Status,Notes\n';
     
     employeeWorkSummaries.forEach(summary => {
       summary.schedules.forEach(schedule => {
@@ -250,8 +295,10 @@ const WorkHoursHistory: React.FC = () => {
           summary.employee.department,
           summary.employee.position,
           schedule.date,
-          schedule.startTime,
-          schedule.endTime,
+          schedule.entryTime,
+          schedule.exitTime,
+          schedule.pauseDuration || 0,
+          schedule.machineCollapseDuration || 0,
           schedule.hoursWorked,
           schedule.salary,
           schedule.status,
@@ -524,20 +571,24 @@ const WorkHoursHistory: React.FC = () => {
                           <thead className="bg-gray-50">
                             <tr>
                               <th className="text-left p-3 font-semibold text-gray-700">Date</th>
-                              <th className="text-left p-3 font-semibold text-gray-700">Start</th>
-                              <th className="text-left p-3 font-semibold text-gray-700">End</th>
-                              <th className="text-left p-3 font-semibold text-gray-700">Hours</th>
-                              <th className="text-left p-3 font-semibold text-gray-700">Status</th>
-                              <th className="text-right p-3 font-semibold text-gray-700">Salary</th>
+                              <th className="text-left p-3 font-semibold text-gray-700">Entrée</th>
+                              <th className="text-left p-3 font-semibold text-gray-700">Sortie</th>
+                              <th className="text-left p-3 font-semibold text-gray-700">Pause</th>
+                              <th className="text-left p-3 font-semibold text-gray-700">Machine</th>
+                              <th className="text-left p-3 font-semibold text-gray-700">Heures</th>
+                              <th className="text-left p-3 font-semibold text-gray-700">Statut</th>
+                              <th className="text-right p-3 font-semibold text-gray-700">Salaire</th>
                             </tr>
                           </thead>
                           <tbody>
                             {summary.schedules.map(schedule => (
                               <tr key={schedule.id} className="border-b hover:bg-gray-50">
                                 <td className="p-3 font-medium">{schedule.date}</td>
-                                <td className="p-3">{schedule.startTime}</td>
-                                <td className="p-3">{schedule.endTime}</td>
-                                <td className="p-3 font-semibold">{schedule.hoursWorked}h</td>
+                                <td className="p-3">{schedule.entryTime}</td>
+                                <td className="p-3">{schedule.exitTime}</td>
+                                <td className="p-3 text-orange-600">{schedule.pauseDuration || 0}min</td>
+                                <td className="p-3 text-red-600">{schedule.machineCollapseDuration || 0}min</td>
+                                <td className="p-3 font-semibold">{schedule.hoursWorked.toFixed(2)}h</td>
                                 <td className="p-3">
                                   <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                                     schedule.status === 'present' ? 'bg-green-100 text-green-800' :

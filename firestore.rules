@@ -13,6 +13,35 @@ service cloud.firestore {
         && data.quantity is string;
     }
 
+    // Packaging traceability (Suivi Emballages)
+    function isValidEmballageLot() {
+      let data = request.resource.data;
+      return data.lotNumber is string
+        && data.status is string && (data.status in ['brouillon', 'en_cours', 'termine'])
+        && data.emballageData is map
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (data.archived is bool || !("archived" in data))
+        && (data.archivedAt is timestamp || !("archivedAt" in data))
+        && data.createdBy is string; // must be the owner's UID
+    }
+
+    match /packaging_traces/{docId} {
+      // Any authenticated user can read
+      allow read: if isAuthenticated();
+      // Create must be valid and createdBy must match current user
+      allow create: if isAuthenticated()
+        && isValidEmballageLot()
+        && request.resource.data.createdBy == request.auth.uid;
+      // Update must be valid and only by owner; createdBy cannot change
+      allow update: if isAuthenticated()
+        && isValidEmballageLot()
+        && resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdBy == resource.data.createdBy;
+      // Delete only by owner
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+    }
+
     match /reception-entries/{docId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidReceptionEntry();
@@ -282,7 +311,7 @@ service cloud.firestore {
 
     // Inventory
     match /inventory/{itemId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated();
     }
@@ -478,51 +507,114 @@ service cloud.firestore {
       allow delete: if isAuthenticated();
     }
 
-    // Personnel Management collection
-    match /personnel/{documentId} {
-      // Allow full access for development/testing
-      allow read, write: if true;
-    }
-
-    // Work Schedules collection
-    match /work_schedules/{documentId} {
-      // Allow full access for development/testing
-      allow read, write: if true;
-    }
-
-    // Messages collection for communication dashboard with enhanced validation
-    function isValidMessage() {
+    // Personnel Management collection - secure access
+    function isValidPersonnelData() {
       let data = request.resource.data;
-      return data.senderEmail is string
-        && data.senderName is string
-        && data.content is string
-        && data.priority is string
-        && (data.priority in ['low', 'medium', 'high'])
-        && data.read is bool
-        && data.timestamp is string
-        && data.createdAt is timestamp;
+      return data.firstName is string
+        && data.lastName is string
+        && data.position is string
+        && data.department is string
+        && data.hourlyRate is number
+        && data.status is string;
+    }
+
+    match /personnel/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidPersonnelData();
+      allow update: if isAuthenticated() && isValidPersonnelData();
+      allow delete: if isAuthenticated();
+    }
+
+    // Work Schedules collection - secure salary data management
+    function isValidWorkSchedule() {
+      let data = request.resource.data;
+      return data.employeeId is string
+        && data.date is string
+        && data.entryTime is string
+        && data.exitTime is string
+        && data.pauseDuration is number
+        && data.pauseDuration >= 0
+        && data.pauseDuration <= 480  // Max 8 hours pause
+        && data.machineCollapseDuration is number
+        && data.machineCollapseDuration >= 0
+        && data.machineCollapseDuration <= 480  // Max 8 hours machine breakdown
+        && data.hoursWorked is number
+        && data.hoursWorked >= 0
+        && data.hoursWorked <= 24  // Max 24 hours per day
+        && data.salary is number
+        && data.salary >= 0  // Salary cannot be negative
+        && data.salary <= 2000  // Max reasonable daily salary (approx 24h * 80 MAD/h)
+        && data.status is string
+        && (data.status in ['present', 'absent', 'late', 'overtime'])
+        && data.checked is bool;
+    }
+
+    match /work_schedules/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidWorkSchedule();
+      allow update: if isAuthenticated() && isValidWorkSchedule();
+      allow delete: if isAuthenticated();
+    }
+
+    // Messages collection for communication dashboard
+    function isValidMessage() {
+      let d = request.resource.data;
+      // Required base fields
+      return d.senderEmail is string
+        && d.senderName is string
+        && d.content is string
+        && d.priority is string && (d.priority in ['low', 'medium', 'high'])
+        && d.read is bool
+        // Timestamps stored as server timestamps
+        && d.timestamp is timestamp
+        && d.createdAt is timestamp
+        && d.updatedAt is timestamp
+        // Optional/nullable recipient fields allowed
+        && (d.recipientEmail is string || d.recipientEmail == null || !('recipientEmail' in d))
+        && (d.recipientName is string || d.recipientName == null || !('recipientName' in d));
     }
 
     match /messages/{messageId} {
       allow read: if isAuthenticated();
+      // Any authenticated user can create a message (broadcast or direct)
       allow create: if isAuthenticated() && isValidMessage();
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      // Updates allowed to mark as read or edit content/priority by sender; enforce schema
+      allow update: if isAuthenticated()
+        && isValidMessage()
+        && (
+          // Marking read is allowed for the addressed recipient or broadcast recipient
+          (
+            request.resource.data.read == true &&
+            // Permit anyone authenticated to mark as read on the client app
+            true
+          )
+          ||
+          // Otherwise, only the original sender can change message content/priority
+          (
+            resource.data.senderEmail == request.auth.token.email
+          )
+        );
+      // Deletion permitted to sender only
+      allow delete: if isAuthenticated() && resource.data.senderEmail == request.auth.token.email;
     }
 
-    // Communication Notifications collection with enhanced validation
+    // Communication Notifications collection
     function isValidCommunicationNotification() {
-      let data = request.resource.data;
-      return data.content is string
-        && data.read is bool
-        && data.timestamp is string
-        && data.createdAt is timestamp;
+      let d = request.resource.data;
+      return d.content is string
+        && d.read is bool
+        && d.timestamp is timestamp
+        && d.createdAt is timestamp
+        && d.updatedAt is timestamp;
     }
 
     match /communication-notifications/{notificationId} {
       allow read: if isAuthenticated();
+      // Any authenticated user in the app can create notifications (adjust to roles if needed)
       allow create: if isAuthenticated() && isValidCommunicationNotification();
-      allow update: if isAuthenticated();
+      // Allow marking as read and safe edits; enforce schema
+      allow update: if isAuthenticated() && isValidCommunicationNotification();
+      // Allow deletion by creators/admins if you store createdBy; fallback to any authenticated
       allow delete: if isAuthenticated();
     }
 

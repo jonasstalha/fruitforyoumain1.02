@@ -6,7 +6,6 @@ import {
   Download, 
   Search, 
   Filter,
-  Calculator,
   FileText,
   Clock,
   TrendingUp,
@@ -15,8 +14,23 @@ import {
 } from 'lucide-react';
 import { collection, query, where, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Employee } from '../../types';
 import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+
+// Employee interface
+interface Employee {
+  id: string;
+  firstName: string;
+  lastName: string;
+  position: string;
+  department: string;
+  hourlyRate: number;
+  status: string;
+  email?: string;
+  phone?: string;
+  hireDate?: string;
+}
 
 interface PayrollData {
   employeeId: string;
@@ -30,18 +44,17 @@ interface PayrollData {
     insurance: number;
     other: number;
   };
-  bonuses: {
-    performance: number;
-    overtime: number;
-    transport: number;
-    other: number;
-  };
   netSalary: number;
   workDays: Array<{
     date: string;
+    entryTime: string;
+    exitTime: string;
+    pauseDuration: number;        // Minutes
+    machineCollapseDuration: number; // Minutes
     hours: number;
     salary: number;
     status: string;
+    notes: string;
   }>;
 }
 
@@ -49,12 +62,17 @@ interface WorkSchedule {
   id: string;
   employeeId: string;
   date: string;
-  startTime: string;
-  endTime: string;
+  entryTime: string;
+  exitTime: string;
+  pauseDuration: number;        // Minutes - unpaid break
+  machineCollapseDuration: number; // Minutes - half-paid breakdown
   hoursWorked: number;
   salary: number;
   status: string;
+  notes?: string;
   checked: boolean;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 const FicheDePaie: React.FC = () => {
@@ -131,11 +149,37 @@ const FicheDePaie: React.FC = () => {
     }
 
     const payroll = employees.map(employee => {
-      const employeeSchedules = schedules.filter(s => s.employeeId === employee.id && s.checked);
+      // FETCH ALL SAVED SCHEDULES - Remove checked filter to show all salary data
+      const employeeSchedules = schedules.filter(s => s.employeeId === employee.id);
+      
+      console.log(`💰 CALCULATING PAYROLL for ${employee.firstName} ${employee.lastName}:`, {
+        employeeId: employee.id,
+        totalSchedules: employeeSchedules.length,
+        checkedSchedules: employeeSchedules.filter(s => s.checked).length,
+        hourlyRate: employee.hourlyRate,
+        scheduleBreakdown: employeeSchedules.map(s => ({
+          date: s.date,
+          entryTime: s.entryTime,
+          exitTime: s.exitTime,
+          pauseDuration: s.pauseDuration,
+          machineCollapseDuration: s.machineCollapseDuration,
+          hoursWorked: s.hoursWorked,
+          calculatedSalary: s.salary
+        }))
+      });
       
       const totalHours = employeeSchedules.reduce((sum, s) => sum + (s.hoursWorked || 0), 0);
       const totalDays = employeeSchedules.length;
       const grossSalary = employeeSchedules.reduce((sum, s) => sum + (s.salary || 0), 0);
+
+      // Enhanced salary breakdown logging
+      console.log(`💵 SALARY BREAKDOWN for ${employee.firstName}:`, {
+        totalHours,
+        totalDays,
+        grossSalary,
+        averageDailySalary: totalDays > 0 ? grossSalary / totalDays : 0,
+        averageHourlyEarned: totalHours > 0 ? grossSalary / totalHours : 0
+      });
 
       // Calculate deductions (approximate percentages)
       const socialSecurity = grossSalary * 0.096; // 9.6% social security
@@ -143,20 +187,18 @@ const FicheDePaie: React.FC = () => {
       const insurance = grossSalary * 0.015; // 1.5% insurance
       const totalDeductions = socialSecurity + taxes + insurance;
 
-      // Calculate bonuses
-      const overtimeHours = Math.max(0, totalHours - (totalDays * 8));
-      const overtimeBonus = overtimeHours * (employee.hourlyRate || 15) * 1.5; // 1.5x rate for overtime
-      const performanceBonus = totalDays >= 20 ? 200 : 0; // 200 MAD bonus for full attendance
-      const transportBonus = totalDays * 10; // 10 MAD per day transport allowance
-
-      const totalBonuses = overtimeBonus + performanceBonus + transportBonus;
-      const netSalary = grossSalary + totalBonuses - totalDeductions;
+      const netSalary = grossSalary - totalDeductions;
 
       const workDays = employeeSchedules.map(s => ({
         date: s.date,
+        entryTime: s.entryTime,
+        exitTime: s.exitTime,
+        pauseDuration: s.pauseDuration || 0,          // Minutes
+        machineCollapseDuration: s.machineCollapseDuration || 0, // Minutes  
         hours: s.hoursWorked,
         salary: s.salary,
-        status: s.status
+        status: s.status,
+        notes: s.notes || ''
       }));
 
       return {
@@ -171,15 +213,21 @@ const FicheDePaie: React.FC = () => {
           insurance,
           other: 0
         },
-        bonuses: {
-          performance: performanceBonus,
-          overtime: overtimeBonus,
-          transport: transportBonus,
-          other: 0
-        },
         netSalary,
         workDays
       };
+    });
+
+    console.log('🔍 PAYROLL CALCULATION COMPLETE:', {
+      totalEmployees: payroll.length,
+      totalPayrollAmount: payroll.reduce((sum, p) => sum + p.grossSalary, 0),
+      totalHours: payroll.reduce((sum, p) => sum + p.totalHours, 0),
+      monthlyBreakdown: payroll.map(p => ({
+        employee: `${p.employee.firstName} ${p.employee.lastName}`,
+        workDays: p.totalDays,
+        grossSalary: p.grossSalary,
+        netSalary: p.netSalary
+      }))
     });
 
     setPayrollData(payroll);
@@ -202,7 +250,7 @@ const FicheDePaie: React.FC = () => {
   // Get unique departments
   const departments = useMemo(() => {
     const depts = employees.map(emp => emp.department).filter(Boolean);
-    return [...new Set(depts)];
+    return Array.from(new Set(depts));
   }, [employees]);
 
   // Calculate totals
@@ -212,36 +260,170 @@ const FicheDePaie: React.FC = () => {
       totalHours: acc.totalHours + payroll.totalHours,
       totalGrossSalary: acc.totalGrossSalary + payroll.grossSalary,
       totalNetSalary: acc.totalNetSalary + payroll.netSalary,
-      totalDeductions: acc.totalDeductions + Object.values(payroll.deductions).reduce((sum, val) => sum + val, 0),
-      totalBonuses: acc.totalBonuses + Object.values(payroll.bonuses).reduce((sum, val) => sum + val, 0)
+      totalDeductions: acc.totalDeductions + Object.values(payroll.deductions).reduce((sum, val) => sum + val, 0)
     }), {
       totalEmployees: 0,
       totalHours: 0,
       totalGrossSalary: 0,
       totalNetSalary: 0,
-      totalDeductions: 0,
-      totalBonuses: 0
+      totalDeductions: 0
     });
   }, [filteredPayroll]);
 
   const generatePayrollPDF = (payroll: PayrollData) => {
-    // This would generate a PDF payslip for individual employee
-    console.log('Generating PDF for:', payroll.employee.firstName, payroll.employee.lastName);
-    alert(`PDF generation for ${payroll.employee.firstName} ${payroll.employee.lastName} would be implemented here`);
+    try {
+      console.log('🔄 Starting PDF generation for:', payroll.employee.firstName, payroll.employee.lastName);
+      
+      // Create new PDF document
+      const pdf = new jsPDF();
+      
+      // Header
+      pdf.setFontSize(24);
+      pdf.setTextColor(76, 175, 80);
+      pdf.text('FRUITS FOR YOU', 105, 25, { align: 'center' });
+      
+      pdf.setFontSize(18);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('FICHE DE PAIE', 105, 35, { align: 'center' });
+      
+      pdf.setFontSize(12);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text(`Période: ${selectedMonth}`, 105, 45, { align: 'center' });
+      
+      // Line
+      pdf.setLineWidth(1);
+      pdf.setDrawColor(76, 175, 80);
+      pdf.line(20, 50, 190, 50);
+      
+      // Employee Information
+      pdf.setFontSize(14);
+      pdf.setTextColor(76, 175, 80);
+      pdf.text('INFORMATIONS EMPLOYÉ', 20, 65);
+      
+      pdf.setFontSize(11);
+      pdf.setTextColor(0, 0, 0);
+      
+      pdf.text(`Nom: ${payroll.employee.firstName} ${payroll.employee.lastName}`, 20, 75);
+      pdf.text(`Département: ${payroll.employee.department}`, 20, 82);
+      pdf.text(`Taux Horaire: ${payroll.employee.hourlyRate} MAD/h`, 20, 89);
+      
+      pdf.text(`Jours Travaillés: ${payroll.totalDays}`, 120, 75);
+      pdf.text(`Heures Travaillées: ${payroll.totalHours.toFixed(1)}h`, 120, 82);
+      pdf.text(`Date: ${new Date().toLocaleDateString('fr-FR')}`, 120, 89);
+      
+      // Salary Information
+      pdf.setFontSize(14);
+      pdf.setTextColor(76, 175, 80);
+      pdf.text('DÉTAIL DU SALAIRE', 20, 105);
+      
+      pdf.setFontSize(11);
+      pdf.setTextColor(0, 0, 0);
+      
+      const salaryData = [
+        ['Salaire Brut', `${payroll.grossSalary.toFixed(2)} MAD`],
+        ['Cotisations Sociales', `-${payroll.deductions.socialSecurity.toFixed(2)} MAD`],
+        ['Impôts', `-${payroll.deductions.taxes.toFixed(2)} MAD`],
+        ['Assurance', `-${payroll.deductions.insurance.toFixed(2)} MAD`],
+        ['SALAIRE NET', `${payroll.netSalary.toFixed(2)} MAD`]
+      ];
+      
+      // Use autoTable for salary details
+      (pdf as any).autoTable({
+        startY: 110,
+        head: [['Type', 'Montant']],
+        body: salaryData,
+        theme: 'grid',
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [76, 175, 80] },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        margin: { left: 20, right: 20 }
+      });
+      
+      // Work Hours Table
+      const finalY = (pdf as any).lastAutoTable.finalY + 15;
+      
+      pdf.setFontSize(14);
+      pdf.setTextColor(76, 175, 80);
+      pdf.text('DÉTAIL DES HEURES TRAVAILLÉES', 20, finalY);
+      
+      const workData = payroll.workDays.map(day => [
+        new Date(day.date).toLocaleDateString('fr-FR'),
+        day.entryTime,
+        day.exitTime,
+        `${day.pauseDuration}min`,
+        `${day.machineCollapseDuration}min`,
+        `${day.hours.toFixed(1)}h`,
+        `${day.salary.toFixed(2)} MAD`
+      ]);
+      
+      (pdf as any).autoTable({
+        startY: finalY + 5,
+        head: [['Date', 'Entrée', 'Sortie', 'Pause', 'Panne', 'Heures', 'Salaire']],
+        body: workData,
+        theme: 'striped',
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [76, 175, 80] },
+        margin: { left: 20, right: 20 }
+      });
+      
+      // Footer
+      const pageHeight = pdf.internal.pageSize.height;
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text(
+        `Document généré le ${new Date().toLocaleDateString('fr-FR')} - FRUITS FOR YOU`,
+        105, pageHeight - 10, { align: 'center' }
+      );
+      
+      // Save PDF
+      const fileName = `Fiche-de-Paie-${payroll.employee.firstName}-${payroll.employee.lastName}-${selectedMonth}.pdf`;
+      pdf.save(fileName);
+      
+      console.log(`✅ PDF Generated successfully for ${payroll.employee.firstName} ${payroll.employee.lastName}`);
+      
+    } catch (error) {
+      console.error('❌ Error generating PDF:', error);
+      alert(`Error generating PDF. Please try again.`);
+    }
   };
 
   const exportPayrollCSV = () => {
     const csvData = filteredPayroll.map(payroll => 
-      `${payroll.employee.firstName} ${payroll.employee.lastName},${payroll.employee.department},${payroll.totalDays},${payroll.totalHours},${payroll.grossSalary.toFixed(2)},${Object.values(payroll.deductions).reduce((sum, val) => sum + val, 0).toFixed(2)},${Object.values(payroll.bonuses).reduce((sum, val) => sum + val, 0).toFixed(2)},${payroll.netSalary.toFixed(2)}`
+      `${payroll.employee.firstName} ${payroll.employee.lastName},${payroll.employee.department},${payroll.totalDays},${payroll.totalHours},${payroll.grossSalary.toFixed(2)},${Object.values(payroll.deductions).reduce((sum, val) => sum + val, 0).toFixed(2)},${payroll.netSalary.toFixed(2)}`
     ).join('\n');
     
-    const header = 'Employee Name,Department,Days Worked,Hours Worked,Gross Salary (MAD),Total Deductions (MAD),Total Bonuses (MAD),Net Salary (MAD)\n';
+    const header = 'Employee Name,Department,Days Worked,Hours Worked,Gross Salary (MAD),Total Deductions (MAD),Net Salary (MAD)\n';
     const blob = new Blob([header + csvData], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `payroll-${selectedMonth}.csv`;
     a.click();
+  };
+
+  const downloadAllPDFs = () => {
+    if (filteredPayroll.length === 0) {
+      alert('Aucune donnée de paie à télécharger');
+      return;
+    }
+
+    const downloadNextPDF = (index: number) => {
+      if (index >= filteredPayroll.length) {
+        alert(`Tous les PDFs ont été téléchargés! (${filteredPayroll.length} fichiers)`);
+        return;
+      }
+
+      const payroll = filteredPayroll[index];
+      generatePayrollPDF(payroll);
+      
+      // Wait a bit before downloading the next PDF to avoid browser blocking
+      setTimeout(() => {
+        downloadNextPDF(index + 1);
+      }, 1000);
+    };
+
+    // Start downloading PDFs
+    downloadNextPDF(0);
   };
 
   if (loading) {
@@ -320,22 +502,6 @@ const FicheDePaie: React.FC = () => {
               ))}
             </select>
           </div>
-
-          {/* Export Button */}
-          <div className="flex items-end">
-            <button
-              onClick={exportPayrollCSV}
-              disabled={filteredPayroll.length === 0}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-semibold transition-colors w-full justify-center ${
-                filteredPayroll.length === 0
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : 'bg-green-500 hover:bg-green-600 text-white'
-              }`}
-            >
-              <Download className="w-4 h-4" />
-              <span className="text-sm">Export CSV</span>
-            </button>
-          </div>
         </div>
       </div>
 
@@ -386,6 +552,42 @@ const FicheDePaie: React.FC = () => {
         </div>
       </div>
 
+      {/* Quick Actions */}
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-gray-800">Quick Actions</h3>
+            <p className="text-gray-600">Download payslips for all employees or individual ones</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={downloadAllPDFs}
+              disabled={filteredPayroll.length === 0}
+              className={`flex items-center justify-center space-x-2 px-6 py-3 rounded-lg font-semibold transition-colors ${
+                filteredPayroll.length === 0
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-red-500 hover:bg-red-600 text-white shadow-lg hover:shadow-xl'
+              }`}
+            >
+              <FileText className="w-5 h-5" />
+              <span>Download All PDFs ({filteredPayroll.length})</span>
+            </button>
+            <button
+              onClick={exportPayrollCSV}
+              disabled={filteredPayroll.length === 0}
+              className={`flex items-center justify-center space-x-2 px-6 py-3 rounded-lg font-semibold transition-colors ${
+                filteredPayroll.length === 0
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-500 hover:bg-green-600 text-white shadow-lg hover:shadow-xl'
+              }`}
+            >
+              <Download className="w-5 h-5" />
+              <span>Export CSV</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Payroll Table */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="p-6 border-b border-gray-200">
@@ -403,7 +605,6 @@ const FicheDePaie: React.FC = () => {
                 <th className="text-left p-4 font-semibold text-gray-700">Hours</th>
                 <th className="text-left p-4 font-semibold text-gray-700">Gross Salary</th>
                 <th className="text-left p-4 font-semibold text-gray-700">Deductions</th>
-                <th className="text-left p-4 font-semibold text-gray-700">Bonuses</th>
                 <th className="text-left p-4 font-semibold text-gray-700">Net Salary</th>
                 <th className="text-left p-4 font-semibold text-gray-700">Actions</th>
               </tr>
@@ -440,11 +641,6 @@ const FicheDePaie: React.FC = () => {
                     </span>
                   </td>
                   <td className="p-4">
-                    <span className="font-semibold text-blue-600">
-                      +{Object.values(payroll.bonuses).reduce((sum, val) => sum + val, 0).toFixed(0)} MAD
-                    </span>
-                  </td>
-                  <td className="p-4">
                     <span className="font-bold text-green-600 text-lg">{payroll.netSalary.toFixed(0)} MAD</span>
                   </td>
                   <td className="p-4">
@@ -458,10 +654,10 @@ const FicheDePaie: React.FC = () => {
                       </button>
                       <button
                         onClick={() => generatePayrollPDF(payroll)}
-                        className="p-2 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
-                        title="Generate PDF"
+                        className="p-2 text-green-600 hover:bg-green-100 rounded-lg transition-colors shadow-sm hover:shadow-md"
+                        title="Download PDF for this Employee"
                       >
-                        <Printer className="w-4 h-4" />
+                        <Download className="w-4 h-4" />
                       </button>
                     </div>
                   </td>
@@ -519,45 +715,90 @@ const FicheDePaie: React.FC = () => {
                       <h3 className="font-semibold text-gray-800 mb-3">Salary Breakdown</h3>
                       <div className="space-y-2 text-sm">
                         <p><span className="font-medium">Gross Salary:</span> {payroll.grossSalary.toFixed(2)} MAD</p>
-                        <p><span className="font-medium">Total Bonuses:</span> +{Object.values(payroll.bonuses).reduce((sum, val) => sum + val, 0).toFixed(2)} MAD</p>
                         <p><span className="font-medium">Total Deductions:</span> -{Object.values(payroll.deductions).reduce((sum, val) => sum + val, 0).toFixed(2)} MAD</p>
                         <p className="font-bold text-green-600"><span className="font-medium">Net Salary:</span> {payroll.netSalary.toFixed(2)} MAD</p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Work Days Table */}
+                  {/* Work Days Table - Enhanced with Complete Salary Breakdown */}
                   <div className="bg-gray-50 p-4 rounded-lg">
-                    <h3 className="font-semibold text-gray-800 mb-3">Work Days ({payroll.workDays.length} days)</h3>
+                    <h3 className="font-semibold text-gray-800 mb-3">
+                      Détail des Journées de Travail ({payroll.workDays.length} jours)
+                    </h3>
                     <div className="max-h-60 overflow-y-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-gray-200 sticky top-0">
                           <tr>
                             <th className="text-left p-2">Date</th>
-                            <th className="text-left p-2">Hours</th>
-                            <th className="text-left p-2">Salary</th>
-                            <th className="text-left p-2">Status</th>
+                            <th className="text-left p-2">Entrée</th>
+                            <th className="text-left p-2">Sortie</th>
+                            <th className="text-left p-2">Pause</th>
+                            <th className="text-left p-2">Machine</th>
+                            <th className="text-left p-2">Heures</th>
+                            <th className="text-left p-2">Salaire</th>
+                            <th className="text-left p-2">Statut</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
                           {payroll.workDays.map((day, index) => (
                             <tr key={index} className="hover:bg-gray-100">
-                              <td className="p-2">{format(parseISO(day.date), 'dd/MM/yyyy')}</td>
-                              <td className="p-2">{day.hours}h</td>
-                              <td className="p-2">{day.salary} MAD</td>
+                              <td className="p-2 font-medium">{format(parseISO(day.date), 'dd/MM')}</td>
+                              <td className="p-2">{day.entryTime}</td>
+                              <td className="p-2">{day.exitTime}</td>
+                              <td className="p-2 text-orange-600">{day.pauseDuration}min</td>
+                              <td className="p-2 text-red-600">{day.machineCollapseDuration}min</td>
+                              <td className="p-2 font-semibold">{day.hours.toFixed(2)}h</td>
+                              <td className="p-2 font-bold text-green-600">{day.salary} MAD</td>
                               <td className="p-2">
                                 <span className={`px-2 py-1 rounded-full text-xs ${
                                   day.status === 'present' ? 'bg-green-100 text-green-800' :
                                   day.status === 'late' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-blue-100 text-blue-800'
+                                  day.status === 'overtime' ? 'bg-blue-100 text-blue-800' :
+                                  'bg-gray-100 text-gray-800'
                                 }`}>
-                                  {day.status}
+                                  {day.status === 'present' ? 'Présent' :
+                                   day.status === 'late' ? 'Retard' :
+                                   day.status === 'overtime' ? 'H.Sup' : 'Absent'}
                                 </span>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  </div>
+
+                  {/* Salary Calculation Methodology */}
+                  <div className="bg-blue-50 p-4 rounded-lg mt-4">
+                    <h3 className="font-semibold text-blue-800 mb-3">📊 Méthode de Calcul du Salaire</h3>
+                    <div className="text-sm text-blue-700 space-y-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <h4 className="font-medium">Calcul des Heures:</h4>
+                          <ul className="list-disc list-inside text-xs space-y-1">
+                            <li>Heures Travaillées = Sortie - Entrée - Pause</li>
+                            <li>Salaire Normal = Heures × {payroll?.employee?.hourlyRate || 12} MAD/h</li>
+                            <li>Déduction Machine = Minutes Arrêt × {((payroll?.employee?.hourlyRate || 12) / 2 / 60).toFixed(2)} MAD/min</li>
+                          </ul>
+                        </div>
+                        <div>
+                          <h4 className="font-medium">Déductions & Bonus:</h4>
+                          <ul className="list-disc list-inside text-xs space-y-1">
+                            <li>Sécurité Sociale: 9.6% du salaire brut</li>
+                            <li>Impôts: 10% au-dessus de 2500 MAD</li>
+                            <li>Bonus Transport: 10 MAD/jour</li>
+                            <li>Bonus Présence: 200 MAD (≥20 jours)</li>
+                          </ul>
+                        </div>
+                      </div>
+                      <div className="border-t border-blue-200 pt-2 mt-3">
+                        <p className="text-xs font-medium">
+                          💡 <strong>Pause:</strong> Temps non payé • 
+                          <strong> Machine Arrêtée:</strong> Payé à 50% du taux horaire • 
+                          <strong> Heures Sup:</strong> +50% après 8h/jour
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>

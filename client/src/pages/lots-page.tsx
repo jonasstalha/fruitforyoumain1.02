@@ -279,9 +279,16 @@ export default function LotsPage() {
       <CardFooter className="flex justify-end space-x-2">
         <Button variant="outline" size="sm" asChild>
           <Link href={`/multi-lot-detail/${lot.id}`}>
-            {lot.status === 'completed' ? 'Voir détails' : 'Continuer'}
+            Voir détails
           </Link>
         </Button>
+        {lot.status !== 'completed' && lot.status !== 'archived' && (
+          <Button size="sm" asChild>
+            <Link href={`/new-entry?lotId=${lot.id}`}>
+              Ouvrir
+            </Link>
+          </Button>
+        )}
       </CardFooter>
     </Card>
   );
@@ -374,6 +381,11 @@ export default function LotsPage() {
         <Button variant="outline" size="sm" asChild>
           <Link href={`/lot-detail/${encodeURIComponent(lot.harvest.lotNumber)}`}>
             Détails
+          </Link>
+        </Button>
+        <Button size="sm" asChild>
+          <Link href={`/new-entry?legacyLotId=${encodeURIComponent(lot.harvest.lotNumber)}`}>
+            Ouvrir
           </Link>
         </Button>
       </CardFooter>

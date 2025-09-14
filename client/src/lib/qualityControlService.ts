@@ -312,8 +312,9 @@ export const testQualityControlPathUpload = async (file: File, lotId: string, ca
     console.log('✅ Auth check passed');
     
     // Use the exact same path structure as the main upload function
-    const timestamp = Date.now();
-    const fileName = `${file.name}_${timestamp}`;
+  const timestamp = Date.now();
+  const { base: testBase, ext: testExt } = splitFileName(file.name);
+  const fileName = `${testBase}_${timestamp}${testExt}`;
     
     // Clean calibre value for file path (replace N/A with NA to avoid path issues)
     const cleanCalibre = calibre ? calibre.replace(/[^a-zA-Z0-9]/g, '') : 'unknown';
@@ -454,6 +455,15 @@ const retryWithBackoff = async <T>(
   throw lastError!;
 };
 
+// Helper to split filename into base and extension
+const splitFileName = (name: string): { base: string; ext: string } => {
+  const lastDot = name.lastIndexOf('.');
+  if (lastDot === -1) return { base: name, ext: '' };
+  const base = name.substring(0, lastDot);
+  const ext = name.substring(lastDot); // includes dot
+  return { base, ext };
+};
+
 export const uploadQualityControlImage = async (
   file: File, 
   lotId: string, 
@@ -484,7 +494,19 @@ export const uploadQualityControlImage = async (
     }
 
     const timestamp = Date.now();
-    const fileName = `${processedFile.name}_${timestamp}`;
+
+    // Sanitize filename to remove special characters and accents, preserve extension
+    const originalName = processedFile.name;
+    const { base: originalBase, ext: originalExt } = splitFileName(originalName);
+    const sanitizedBase = originalBase
+      .normalize('NFD')  // Normalize accented characters
+      .replace(/[\u0300-\u036f]/g, '')  // Remove accents
+      .replace(/[^a-zA-Z0-9-]/g, '_')  // Replace special chars with underscore (allow dash)
+      .replace(/_{2,}/g, '_')  // Replace multiple underscores with single
+      .toLowerCase();
+
+    const ext = originalExt.toLowerCase();
+    const fileName = `${sanitizedBase}_${timestamp}${ext}`;
     
     // Clean calibre value for file path (replace N/A with NA to avoid path issues)
     const cleanCalibre = calibre ? calibre.replace(/[^a-zA-Z0-9]/g, '') : 'unknown';
@@ -512,7 +534,8 @@ export const uploadQualityControlImage = async (
         originalSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
         processedName: processedFile.name,
         processedSize: `${(processedFile.size / 1024 / 1024).toFixed(2)}MB`,
-        type: processedFile.type
+        type: processedFile.type,
+        sanitizedFileName: fileName
       });
       console.log('Storage path:', storagePath);
       console.log('User auth info:', {
@@ -521,25 +544,61 @@ export const uploadQualityControlImage = async (
         emailVerified: auth.currentUser?.emailVerified
       });
       
-      // Use uploadBytes with a timeout wrapper
-      const uploadWithTimeout = async (timeoutMs: number = 30000) => {
-        return Promise.race([
-          uploadBytes(storageRef, processedFile),
-          new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Upload timeout')), timeoutMs)
-          )
-        ]);
-      };
+      // Try different upload methods with fallback
+      let snapshot: any;
       
-      const snapshot = await uploadWithTimeout();
-      console.log('✅ Upload completed successfully!');
-      console.log('Upload snapshot metadata:', {
-        bucket: snapshot.metadata.bucket,
-        fullPath: snapshot.metadata.fullPath,
-        size: snapshot.metadata.size,
-        contentType: snapshot.metadata.contentType,
-        timeCreated: snapshot.metadata.timeCreated
-      });
+      try {
+        // Method 1: Standard uploadBytes (fastest)
+        console.log('🚀 Attempting standard upload...');
+        snapshot = await uploadBytes(storageRef, processedFile, {
+          customMetadata: {
+            uploadedBy: auth.currentUser?.uid || 'unknown',
+            uploadedAt: new Date().toISOString(),
+            lotId: lotId,
+            calibre: calibre || 'unknown',
+            originalName: file.name
+          }
+        });
+        console.log('✅ Standard upload successful!');
+      } catch (uploadError) {
+        console.warn('❌ Standard upload failed, trying resumable upload:', uploadError);
+        
+        // Method 2: Resumable upload for better reliability
+        try {
+          const { uploadBytesResumable } = await import('firebase/storage');
+          console.log('🔄 Attempting resumable upload...');
+          
+          const uploadTask = uploadBytesResumable(storageRef, processedFile, {
+            customMetadata: {
+              uploadedBy: auth.currentUser?.uid || 'unknown',
+              uploadedAt: new Date().toISOString(),
+              lotId: lotId,
+              calibre: calibre || 'unknown',
+              originalName: file.name
+            }
+          });
+          
+          snapshot = await new Promise((resolve, reject) => {
+            uploadTask.on('state_changed',
+              (taskSnapshot) => {
+                const progress = (taskSnapshot.bytesTransferred / taskSnapshot.totalBytes) * 100;
+                console.log(`Upload progress: ${progress.toFixed(1)}%`);
+              },
+              (error) => {
+                console.error('Resumable upload error:', error);
+                reject(error);
+              },
+              () => {
+                console.log('✅ Resumable upload completed!');
+                resolve(uploadTask.snapshot);
+              }
+            );
+          });
+        } catch (resumableError) {
+          console.error('❌ Both upload methods failed:', resumableError);
+          throw new Error(`Upload failed: ${(resumableError as Error).message}`);
+        }
+      }
       
       return snapshot;
     };
@@ -617,7 +676,7 @@ export const uploadCalibreImages = async (
   lotId: string, 
   calibre: string,
   onProgress?: (progress: { completed: number; total: number; errors: Array<{ file: string; error: string }> }) => void
-): Promise<{ urls: string[]; errors: Array<{ file: string; error: string }> }> => {
+): Promise<string[]> => {
   try {
     console.log(`Starting upload of ${files.length} images for calibre ${calibre} in lot ${lotId}`);
     
@@ -674,12 +733,14 @@ export const uploadCalibreImages = async (
     }
     
     console.log(`Upload batch completed: ${results.length} successful, ${errors.length} failed`);
-    
+
     if (errors.length > 0) {
       console.warn('Some uploads failed:', errors);
+      // Provide a clear error to caller so they can handle partial failures
+      throw new Error(`Some uploads failed: ${errors.map(e => `${e.file}: ${e.error}`).join('; ')}`);
     }
-    
-    return { urls: results, errors };
+
+    return results;
   } catch (error) {
     console.error('Error in batch upload:', error);
     throw error;

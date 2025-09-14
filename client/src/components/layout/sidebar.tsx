@@ -249,21 +249,18 @@ export default function Sidebar() {
   ];
 
   const ReceptionItems = [
-    {
-      title: t('reception.title'),
-      icon: <ClipboardList className="h-5 w-5 mr-2" />,
-      path: "/reception",
-    },
+
     {
       title: 'Contrôle à la réception',
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
       path: "/controle-reception",
     },
     {
-      title: t('common.add') + " " + t('common.entry'),
+      title: 'Suivi emballages',
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
-      path: "/new",
+      path: "/suivi-emballages",
     },
+ 
     {
       title: 'Suivi réception',
       icon: <ClipboardList className="h-5 w-5 mr-2" />,

@@ -66,6 +66,7 @@ import SuiviProduction from "./pages/production/SuiviProduction"
 import SuiviReception from "./pages/reception/SuiviReception"
 import SuiviDechets from "./pages/reception/SuiviDechets"
 import ControleReception from "./pages/reception/ControleReception"
+import SuiviEmballages from "./pages/reception/SuiviEmballages"
 // Public routes that don't require authentication
 function PublicRoutes() {
   return (
@@ -145,6 +146,7 @@ function AuthenticatedRoutes() {
   <Route path="/suivi-reception" component={SuiviReception} />
   <Route path="/suivi-dechets" component={SuiviDechets} />
   <Route path="/controle-reception" component={ControleReception} />
+  <Route path="/suivi-emballages" component={SuiviEmballages} />
         {/* Client Orders */}
         {/* Maintenance Routes */}
         <Route path="/maintenance" component={Dashboard} />

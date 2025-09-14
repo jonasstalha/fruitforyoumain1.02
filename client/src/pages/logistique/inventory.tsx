@@ -1283,7 +1283,7 @@ const Inventory = () => {
       )}
 
       {/* CSS Animations */}
-      <style jsx global>{`
+  <style>{`
         @keyframes fadeInDown {
           from {
             opacity: 0;

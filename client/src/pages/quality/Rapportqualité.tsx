@@ -36,6 +36,10 @@ import {
 } from '../../lib/qualityRapportPDF';
 import { useAuth } from '../../hooks/use-auth';
 import { useToast } from '../../hooks/use-toast';
+// Debug utilities removed from production UI
+// import { createDebugPanel } from '../../lib/debugPanel';
+// import { addWorkflowTestButton } from '../../lib/workflowTest';
+import AuthStatusChecker from '../../components/AuthStatusChecker';
 
 const Rapportqualité = () => {
   const [submittedLots, setSubmittedLots] = useState<QualityRapportLot[]>([]);
@@ -86,6 +90,21 @@ const Rapportqualité = () => {
   useEffect(() => {
     loadRapportsFromFirestore();
   }, []);
+
+  // Debug panel/test button injection disabled
+  // useEffect(() => {
+  //   if (process.env.NODE_ENV === 'development') {
+  //     const timer = setTimeout(() => {
+  //       if (!document.getElementById('upload-debug-panel')) {
+  //         createDebugPanel();
+  //       }
+  //       if (!document.getElementById('workflow-test-btn')) {
+  //         addWorkflowTestButton();
+  //       }
+  //     }, 2000);
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, []);
 
   // Load saved rapport data when a lot is selected
   useEffect(() => {
@@ -990,7 +1009,7 @@ const Rapportqualité = () => {
     const calibreResults = testResults[selectedCalibre] || {};
     
     return (
-      <div className="p-6 max-w-7xl mx-auto">
+      <div key={`calibre-${selectedCalibre}`} className="p-6 max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
             <button
@@ -1383,30 +1402,6 @@ const Rapportqualité = () => {
                   </div>
                 )}
               </div>
-
-              {/* Purée (Always image) */}
-              <div>
-                <label htmlFor={`puree-${selectedCalibre}`} className="text-sm font-medium text-gray-700 mb-2 block flex items-center gap-2">
-                  <Camera className="w-4 h-4" />
-                  Purée Test Result (Image Required)
-                </label>
-                <div className="space-y-2">
-                  <input
-                    id={`puree-${selectedCalibre}`}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleTestImageUpload(selectedCalibre, 'puree', e.target.files?.[0] || null)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    aria-label="Upload image for purée test result"
-                  />
-                  {calibreResults.puree_image && (
-                    <div className="flex items-center gap-2 text-green-600 bg-green-50 p-2 rounded">
-                      <CheckCircle className="w-4 h-4" />
-                      <span className="text-sm">Purée test image uploaded</span>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
 
             <button
@@ -1422,195 +1417,55 @@ const Rapportqualité = () => {
               {isSaving ? 'Saving to Firestore...' : 'Save to Firestore'}
             </button>
             
-            {/* Debug Upload Button */}
+            {/* Submit Images to Firebase Storage */}
             {allImages.length > 0 && (
               <button
                 onClick={async () => {
                   try {
-                    const testFile = calibreImages[0];
-                    if (testFile) {
-                      console.log('Testing single image upload...');
-                      const url = await uploadQualityControlImage(testFile, selectedLot.id, 'calibre', String(selectedCalibre));
-                      console.log('Test upload successful:', url);
-                      toast({
-                        title: "Test réussi",
-                        description: "Upload test réussi - Firebase Storage fonctionne",
-                        variant: "default",
-                      });
-                    }
-                  } catch (error) {
-                    console.error('Test upload failed:', error);
-                    toast({
-                      title: "Test échoué",
-                      description: `Erreur: ${(error as Error).message}`,
-                      variant: "destructive",
-                    });
-                  }
-                }}
-                className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm"
-              >
-                🔧 Test Upload (Debug)
-              </button>
-            )}
-            
-            {/* Comprehensive Firebase Diagnostic */}
-            <button
-              onClick={async () => {
-                try {
-                  console.log('🔍 Starting comprehensive Firebase diagnostic...');
-                  
-                  // 1. Check user authentication and permissions
-                  const { checkUserPermissions } = await import('../../lib/qualityControlService');
-                  await checkUserPermissions();
-                  
-                  // 2. Test Firebase Storage connection
-                  const { ref } = await import('firebase/storage');
-                  const { storage } = await import('../../lib/firebase');
-                  const testRef = ref(storage, '.diagnostic-test');
-                  console.log('✅ Storage reference created successfully');
-                  
-                  // 3. Test simple upload to test path
-                  if (calibreImages.length > 0) {
-                    const { testSimpleUpload } = await import('../../lib/qualityControlService');
-                    const testFile = calibreImages[0];
-                    console.log('🧪 Testing simple upload...');
-                    const simpleUrl = await testSimpleUpload(testFile);
-                    console.log('✅ Simple upload successful:', simpleUrl);
+                    setIsSaving(true);
                     
-                    // 4. Test QC path upload
-                    const { testQualityControlPathUpload } = await import('../../lib/qualityControlService');
-                    console.log('🎯 Testing QC path upload...');
-                    const qcUrl = await testQualityControlPathUpload(testFile, selectedLot.id, String(selectedCalibre));
-                    console.log('✅ QC path upload successful:', qcUrl);
+                    // Upload all images for this calibre to Firebase Storage
+                    const uploadPromises = calibreImages.map(async (file, index) => {
+                      // Use the uploadQualityControlImage function with proper parameters
+                      return uploadQualityControlImage(file, selectedLot.id, 'calibre', String(selectedCalibre));
+                    });
+                    
+                    const urls = await Promise.all(uploadPromises);
+                    
+                    // Update saved URLs for this calibre
+                    setSavedImageUrls(prev => ({
+                      ...prev,
+                      [selectedCalibre]: urls
+                    }));
+                    
+                    console.log('✅ All images uploaded successfully:', urls);
                     
                     toast({
-                      title: "Diagnostic Réussi! ✅",
-                      description: "Tous les tests Firebase sont passés. Les uploads devraient fonctionner.",
+                      title: "Images sauvegardées! ✅",
+                      description: `${urls.length} image(s) uploadée(s) pour le lot ${selectedLot.lotNumber} calibre ${selectedCalibre}`,
                       variant: "default",
                     });
-                  } else {
-                    toast({
-                      title: "Diagnostic Partiel ✅",
-                      description: "Authentification OK. Ajoutez des images pour tester les uploads.",
-                      variant: "default",
-                    });
-                  }
-                  
-                } catch (error) {
-                  console.error('❌ Diagnostic failed:', error);
-                  toast({
-                    title: "Diagnostic Échoué ❌",
-                    description: `Problème détecté: ${(error as Error).message}`,
-                    variant: "destructive",
-                  });
-                }
-              }}
-              className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
-            >
-              🔍 Diagnostic Complet Firebase
-            </button>
-            
-            {/* Firebase Storage Connection Test */}
-            <button
-              onClick={async () => {
-                try {
-                  const { ref } = await import('firebase/storage');
-                  const { storage } = await import('../../lib/firebase');
-                  
-                  console.log('Testing Firebase Storage connection...');
-                  const testRef = ref(storage, '.connection-test');
-                  console.log('Storage reference created successfully');
-                  
-                  // Test authentication
-                  const { auth } = await import('../../lib/firebase');
-                  const user = auth.currentUser;
-                  
-                  if (!user) {
-                    throw new Error('No authenticated user found');
-                  }
-                  
-                  console.log('Authentication OK:', { email: user.email, uid: user.uid });
-                  
-                  toast({
-                    title: "Connexion OK",
-                    description: "Firebase Storage et Authentication fonctionnent correctement",
-                    variant: "default",
-                  });
-                } catch (error) {
-                  console.error('Connection test failed:', error);
-                  toast({
-                    title: "Test de connexion échoué",
-                    description: `Erreur: ${(error as Error).message}`,
-                    variant: "destructive",
-                  });
-                }
-              }}
-              className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
-            >
-              🔗 Test Firebase Connection
-            </button>
-            
-            {/* Simple Upload Test */}
-            {allImages.length > 0 && (
-              <button
-                onClick={async () => {
-                  try {
-                    const { testSimpleUpload } = await import('../../lib/qualityControlService');
-                    const testFile = calibreImages[0];
-                    if (testFile) {
-                      console.log('🧪 Testing simple upload method...');
-                      const url = await testSimpleUpload(testFile);
-                      console.log('✅ Simple upload successful:', url);
-                      toast({
-                        title: "Test Simple réussi!",
-                        description: "Upload simple fonctionne - problème identifié avec uploadBytesResumable",
-                        variant: "default",
-                      });
-                    }
+                    
                   } catch (error) {
-                    console.error('❌ Simple upload failed:', error);
+                    console.error('❌ Upload failed:', error);
                     toast({
-                      title: "Test Simple échoué",
-                      description: `Erreur: ${(error as Error).message}`,
+                      title: "Erreur d'upload",
+                      description: `Erreur CORS/Upload: ${(error as Error).message}. Vérifiez la configuration CORS.`,
                       variant: "destructive",
                     });
+                  } finally {
+                    setIsSaving(false);
                   }
                 }}
-                className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 text-sm"
+                disabled={isSaving}
+                className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                🔬 Test Simple Upload
-              </button>
-            )}
-            
-            {/* Quality Control Path Test */}
-            {allImages.length > 0 && (
-              <button
-                onClick={async () => {
-                  try {
-                    const { testQualityControlPathUpload } = await import('../../lib/qualityControlService');
-                    const testFile = calibreImages[0];
-                    if (testFile) {
-                      console.log('🎯 Testing QC path upload method...');
-                      const url = await testQualityControlPathUpload(testFile, selectedLot.id, String(selectedCalibre));
-                      console.log('✅ QC path upload successful:', url);
-                      toast({
-                        title: "Test QC Path réussi!",
-                        description: "Upload avec chemin quality control fonctionne!",
-                        variant: "default",
-                      });
-                    }
-                  } catch (error) {
-                    console.error('❌ QC path upload failed:', error);
-                    toast({
-                      title: "Test QC Path échoué",
-                      description: `Erreur: ${(error as Error).message}`,
-                      variant: "destructive",
-                    });
-                  }
-                }}
-                className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm"
-              >
-                🎯 Test QC Path Upload
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                {isSaving ? 'Upload en cours...' : `Sauvegarder ${calibreImages.length} image(s)`}
               </button>
             )}
           </div>
@@ -1621,7 +1476,7 @@ const Rapportqualité = () => {
 
   if (selectedLot) {
     return (
-      <div className="p-6 max-w-7xl mx-auto">
+      <div key={`lot-${selectedLot?.id ?? 'unknown'}`} className="p-6 max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
             <button
@@ -1823,7 +1678,10 @@ const Rapportqualité = () => {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div key="qc-main" className="p-6 max-w-7xl mx-auto">
+      {/* Authentication Status */}
+      <AuthStatusChecker />
+      
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Quality Control - Chief Phase</h1>

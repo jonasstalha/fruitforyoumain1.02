@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2, Save, CheckCircle, Clock, ArrowLeft, ArrowRight, Package, Truck, Factory, Warehouse, Ship, MapPin, Users, Globe } from "lucide-react";
-import { addAvocadoTracking, getFarms } from "@/lib/firebaseService";
+import { addAvocadoTracking, getFarms, getAvocadoTrackingByLotNumber, updateAvocadoTracking } from "@/lib/firebaseService";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -28,12 +28,15 @@ export default function NewEntryPage() {
   const [error, setError] = useState('');
   const [showLotSelector, setShowLotSelector] = useState(true);
   const [selectedLot, setSelectedLot] = useState<MultiLot | null>(null);
+  const [isEditingLegacyLot, setIsEditingLegacyLot] = useState(false);
+  const [legacyLotId, setLegacyLotId] = useState<string | null>(null);
 
   const { 
     addLot, 
     updateLot, 
     updateLotStep, 
     completeLot, 
+    getLot,
     loading: multiLotLoading, 
     error: multiLotError 
   } = useMultiLots();
@@ -70,16 +73,96 @@ export default function NewEntryPage() {
     };
 
     loadData();
-
-    // Check if lot ID is provided in URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const lotId = urlParams.get('lotId');
-    if (lotId) {
-      // Find and select the lot
-      // This will be handled by the subscription in useMultiLots
-      setShowLotSelector(false);
-    }
   }, []);
+
+  // Separate effect to handle lot loading when lots are available
+  useEffect(() => {
+    const loadLot = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const lotId = urlParams.get('lotId');
+      const legacyLotId = urlParams.get('legacyLotId');
+      
+      if (lotId && !multiLotLoading) {
+        // Handle multi-lot loading
+        const lot = getLot(lotId);
+        if (lot) {
+          setSelectedLot(lot);
+          setShowLotSelector(false);
+          // Initialize formData with the lot data
+          setFormData({
+            ...lot,
+            selectedFarm: lot.harvest?.farmLocation || "",
+            packagingDate: lot.packaging?.packagingDate || "",
+            boxId: lot.packaging?.boxId || "",
+            boxTypes: lot.packaging?.boxTypes || [],
+            calibers: lot.packaging?.calibers || [],
+            avocadoCount: lot.packaging?.avocadoCount || 0,
+            status: lot.status || "draft",
+            completedSteps: lot.completedSteps || [],
+            createdAt: lot.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          
+          // Set current step based on completed steps
+          const completedSteps = lot.completedSteps || [];
+          if (completedSteps.length > 0) {
+            setCurrentStep(Math.max(...completedSteps) + 1);
+          } else {
+            setCurrentStep(1);
+          }
+        }
+      } else if (legacyLotId) {
+        // Handle legacy lot loading
+        try {
+          const legacyLot = await getAvocadoTrackingByLotNumber(legacyLotId);
+          if (legacyLot) {
+            setIsEditingLegacyLot(true);
+            setLegacyLotId(legacyLot.id);
+            setShowLotSelector(false);
+            // Convert legacy lot to the expected format
+            setFormData({
+              id: legacyLot.id,
+              harvest: legacyLot.harvest,
+              transport: legacyLot.transport,
+              sorting: legacyLot.sorting,
+              packaging: legacyLot.packaging,
+              export: legacyLot.export,
+              delivery: legacyLot.delivery,
+              selectedFarm: legacyLot.harvest?.farmLocation || "",
+              packagingDate: legacyLot.packaging?.packagingDate || "",
+              boxId: legacyLot.packaging?.boxId || "",
+              boxTypes: legacyLot.packaging?.boxTypes || [],
+              calibers: legacyLot.packaging?.calibers || [],
+              avocadoCount: legacyLot.packaging?.avocadoCount || 0,
+              status: "draft", // Legacy lots can always be edited
+              completedSteps: [],
+              currentStep: 1,
+              assignedUsers: user ? [user.uid] : [],
+              globallyAccessible: true,
+              createdBy: user?.uid || "",
+              createdAt: legacyLot.createdAt || new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+            
+            // Set step based on legacy lot completion
+            let step = 1;
+            if (legacyLot.harvest?.harvestDate) step = 2;
+            if (legacyLot.transport?.arrivalDateTime) step = 3;
+            if (legacyLot.sorting?.sortingDate) step = 4;
+            if (legacyLot.packaging?.packagingDate) step = 5;
+            if (legacyLot.export?.loadingDate) step = 6;
+            if (legacyLot.delivery?.actualDeliveryDate) step = 7;
+            setCurrentStep(step);
+          }
+        } catch (error) {
+          console.error("Error loading legacy lot:", error);
+          setError("Erreur lors du chargement du lot");
+        }
+      }
+    };
+
+    loadLot();
+  }, [multiLotLoading, getLot, user]);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -287,11 +370,22 @@ export default function NewEntryPage() {
   const saveDraft = async (silent = false) => {
     setIsSavingDraft(true);
     try {
-      if (selectedLot && selectedLot.id) {
-        // Update existing lot
+      if (isEditingLegacyLot && legacyLotId) {
+        // Update existing legacy lot in avocado-tracking collection
+        const { id, createdAt, updatedAt, selectedFarm, packagingDate, boxId, boxTypes, calibers, avocadoCount, status, completedSteps, currentStep, assignedUsers, globallyAccessible, createdBy, lastSaved, ...legacyData } = formData;
+        await updateAvocadoTracking(legacyLotId, {
+          ...legacyData,
+          updatedAt: new Date().toISOString()
+        });
+      } else if (selectedLot && selectedLot.id) {
+        // Update existing multi-lot
         const { id, createdAt, updatedAt, ...updateData } = formData;
         await updateLot(selectedLot.id, {
           ...updateData,
+          storage: {
+            ...updateData.storage,
+            warehouseName: updateData.storage?.warehouseName ?? ""
+          },
           status: 'draft',
           lastSaved: new Date().toISOString()
         });
@@ -300,11 +394,14 @@ export default function NewEntryPage() {
         const { id, createdAt, updatedAt, ...draftData } = formData;
         const draftSubmission = {
           ...draftData,
+          storage: {
+            ...draftData.storage,
+            warehouseName: draftData.storage?.warehouseName ?? ""
+          },
           status: 'draft',
           lastSaved: new Date().toISOString(),
           lotNumber: draftData.harvest?.lotNumber || `LOT-${Date.now()}`
         };
-        
         const newLotId = await addLot(draftSubmission);
         // Note: selectedLot will be updated through the subscription
       }
@@ -357,7 +454,16 @@ export default function NewEntryPage() {
     setIsSubmitting(true);
 
     try {
-      if (selectedLot && selectedLot.id) {
+      if (isEditingLegacyLot && legacyLotId) {
+        // Update legacy lot in avocado-tracking collection
+        const { id, createdAt, updatedAt, selectedFarm, packagingDate, boxId, boxTypes, calibers, avocadoCount, status, completedSteps, currentStep, assignedUsers, globallyAccessible, createdBy, lastSaved, ...legacyData } = formData;
+        await updateAvocadoTracking(legacyLotId, {
+          ...legacyData,
+          updatedAt: new Date().toISOString()
+        });
+        toast("Lot mis à jour - Le lot hérité a été mis à jour avec les dernières informations.");
+        setLocation('/lots');
+      } else if (selectedLot && selectedLot.id) {
         // Complete the lot if all steps are done
         const allStepsCompleted = formData.completedSteps?.length === 7;
         
@@ -405,7 +511,27 @@ export default function NewEntryPage() {
   };
 
   const markStepComplete = async () => {
-    if (validateCurrentStep() && selectedLot && selectedLot.id) {
+    if (validateCurrentStep() && isEditingLegacyLot && legacyLotId) {
+      try {
+        // For legacy lots, save the current data to avocado-tracking
+        const { id, createdAt, updatedAt, selectedFarm, packagingDate, boxId, boxTypes, calibers, avocadoCount, status, completedSteps, currentStep, assignedUsers, globallyAccessible, createdBy, lastSaved, ...legacyData } = formData;
+        await updateAvocadoTracking(legacyLotId, {
+          ...legacyData,
+          updatedAt: new Date().toISOString()
+        });
+        
+        setFormData(prev => ({
+          ...prev,
+          completedSteps: [...new Set([...(prev.completedSteps || []), currentStep])],
+          updatedAt: new Date().toISOString(),
+        }));
+        
+        toast("Étape mise à jour - Les données de l'étape ont été sauvegardées.");
+      } catch (error) {
+        console.error('Error updating legacy lot step:', error);
+        setError('Failed to update step. Please try again.');
+      }
+    } else if (validateCurrentStep() && selectedLot && selectedLot.id) {
       try {
         // Update the step data based on current step
         const stepData = getStepData(currentStep);
